@@ -183,6 +183,18 @@ the vendor name and editable per invoice; Finny reuses the last-used ref per ven
 - **Phase 3 (partially built):** dashboard and duplicate detection are in; bulk confirm, PO
   matching and the trusted-vendor fast lane are the natural next increments.
 
+## Deploying a shareable demo (Render)
+
+The repo ships a [render.yaml](render.yaml) blueprint: Render dashboard → **New → Blueprint** →
+select this repo → Deploy. You get a single web service (API + web app on one URL) with a 1 GB
+persistent disk; the first boot seeds the demo dataset automatically, so the link lands on a
+populated queue. Everything runs on mock providers — no keys needed. Pushes to `main` auto-deploy.
+
+Notes: the dev sign-in means anyone with the URL can log in — fine for simulated data; put
+Cloudflare Access in front (or do the Entra swap) before real invoices. To run free-tier instead,
+set `plan: free` and remove the `disk` block — the service then sleeps when idle and re-seeds
+fresh demo data on wake.
+
 ## Commands
 
 ```bash

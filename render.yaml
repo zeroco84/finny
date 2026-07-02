@@ -1,0 +1,32 @@
+# Render Blueprint — Finny demo (single web service: API + built web app).
+# Apply it: Render dashboard → New → Blueprint → select this repo → Deploy.
+services:
+  - type: web
+    name: finny
+    runtime: node
+    # starter (paid) = no idle spin-down and the disk below keeps demo data
+    # across deploys. Change to "free" (and delete the disk block) for a
+    # zero-cost demo that cold-starts and re-seeds itself after idling.
+    plan: starter
+    # --include=dev: Render sets NODE_ENV=production, but the server runs via
+    # tsx and the web build needs vite — both devDependencies.
+    buildCommand: npm ci --include=dev && npm run build
+    # First boot on an empty disk seeds the demo dataset (queue, learned
+    # rules, dashboard history, one open alert), then starts the server.
+    startCommand: bash -c 'if [ ! -f "$DATA_DIR/finny.db" ]; then npm run demo; fi; npm run start'
+    healthCheckPath: /api/health
+    disk:
+      name: finny-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATA_DIR
+        value: /data
+      - key: SESSION_SECRET
+        generateValue: true
+      # APP_URL is derived from Render's RENDER_EXTERNAL_URL automatically.
+      # When moving past the mocked demo, add: ANTHROPIC_API_KEY (Claude
+      # extraction), GRAPH_* + MAIL_PROVIDER=graph (shared mailbox),
+      # APPROVALS_PROVIDER=graph (Teams), SMTP_* (real alert emails).

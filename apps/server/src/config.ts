@@ -21,7 +21,9 @@ export const config = {
   attachmentsDir: path.join(dataDir, 'attachments'),
   inboxDir: path.join(dataDir, 'inbox'),
   exportsDir: path.join(dataDir, 'exports'),
-  appUrl: env('APP_URL', 'http://localhost:5173'),
+  // On Render, RENDER_EXTERNAL_URL is the service's public URL — used in
+  // alert-email links and tokenized attachment links when APP_URL isn't set.
+  appUrl: env('APP_URL', env('RENDER_EXTERNAL_URL', 'http://localhost:5173')),
 
   mailProvider: env('MAIL_PROVIDER', 'mock') as 'mock' | 'graph',
   mailPollSeconds: Number(env('MAIL_POLL_SECONDS', '60')),
