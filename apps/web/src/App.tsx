@@ -11,6 +11,7 @@ import AlertsPage from './pages/Alerts';
 import ExportsPage from './pages/Exports';
 import DashboardPage from './pages/Dashboard';
 import SettingsPage from './pages/Settings';
+import GuidePage from './pages/Guide';
 
 function Badge({ n, tone = 'default' }: { n: number | undefined; tone?: 'default' | 'alert' }) {
   if (!n) return null;
@@ -47,6 +48,7 @@ function Shell() {
           </NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/settings">Settings</NavLink>
+          <NavLink to="/guide">Guide</NavLink>
         </nav>
         <div className="topbar-user">
           <span>
@@ -66,6 +68,7 @@ function Shell() {
           <Route path="/exports" element={<ExportsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/guide" element={<GuidePage />} />
           <Route path="*" element={<Queue />} />
         </Routes>
       </main>
