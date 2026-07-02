@@ -39,6 +39,7 @@ import { audit } from '../services/audit.js';
 import { ingestAttachment } from '../services/ingestion/ingest.js';
 import { simulateIncomingInvoice } from '../services/simulator/simulator.js';
 import { recordApprovalDecision } from '../services/approvals/approvals.js';
+import { verifyAttachmentToken } from '../services/attachmentLinks.js';
 import { latestApproval, toSummary } from '../services/invoices.js';
 
 // Express 5 types route params as string | string[] (repeatable segments);
@@ -86,6 +87,30 @@ export function buildRouter(): Router {
       return;
     }
     res.json(user);
+  });
+
+  // ── Tokenized attachment links (no session) ───────────────────────────────
+  // Approving managers are not Finny users: the Teams approval card carries a
+  // signed, expiring link so they can view the invoice without an account.
+  router.get('/public/invoices/:id/attachment', (req, res) => {
+    const id = paramId(req);
+    const exp = typeof req.query.exp === 'string' ? req.query.exp : undefined;
+    const sig = typeof req.query.sig === 'string' ? req.query.sig : undefined;
+    const row = verifyAttachmentToken(id, exp, sig) ? getInvoiceRow(id) : undefined;
+    if (!row || !row.attachment_path) {
+      res
+        .status(410)
+        .type('html')
+        .send(
+          '<body style="font-family: system-ui, sans-serif; padding: 3rem; color: #1d2721; background: #f7f5f0">' +
+            '<h2>This invoice link is invalid or has expired</h2>' +
+            '<p>Links from approval requests are valid for 14 days. Ask the Meadowvale AP team to resend it from Finny.</p></body>',
+        );
+      return;
+    }
+    res.setHeader('Content-Type', String(row.attachment_mime ?? 'application/octet-stream'));
+    res.setHeader('Content-Disposition', `inline; filename="${String(row.attachment_name ?? 'invoice')}"`);
+    res.sendFile(String(row.attachment_path));
   });
 
   // Everything below requires a session.

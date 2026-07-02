@@ -6,6 +6,7 @@ import { raiseAlert } from '../alerts.js';
 import { getApprover } from '../settings.js';
 import { getInvoiceRow } from '../invoices.js';
 import { GraphAuthError, graphFetch } from '../graph/graphClient.js';
+import { buildAttachmentLink } from '../attachmentLinks.js';
 
 /**
  * Teams Approvals integration. Two providers:
@@ -65,7 +66,10 @@ export async function createApprovalRequest(
           displayName: title,
           description:
             `Category: ${row.category ?? '—'} · PO: ${row.po_number ?? '—'} · ` +
-            `Reviewed by ${who} in Finny. ${config.appUrl}/invoices/${invoiceId}`,
+            `Reviewed by ${who} in Finny. ` +
+            // Managers are not Finny users — this signed link shows them the
+            // invoice document without an account (expires in 14 days).
+            `View the invoice: ${buildAttachmentLink(invoiceId)}`,
           approvalType: 'basic',
           allowEmailNotification: true,
           approvers: [{ user: { id: approver.teams_user_id ?? undefined, email: approver.email } }],

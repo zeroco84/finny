@@ -131,7 +131,10 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
 ### Wiring up Teams Approvals
 
 `approvals/approvals.ts` targets the Graph **beta** Approvals endpoint
-(`/beta/solutions/approval/approvalItems`) and polls for decisions. Before go-live, verify the
+(`/beta/solutions/approval/approvalItems`) and polls for decisions. Approving managers are not
+Finny users, so each approval card carries a **signed, expiring link** (14 days, HMAC-bound to the
+invoice — `services/attachmentLinks.ts`) that shows them the invoice document with no account;
+rotating `SESSION_SECRET` invalidates outstanding links. Before go-live, verify the
 beta contract and required permission (`ApprovalSolution.ReadWrite`) against current Graph docs —
 Microsoft has moved this API before. If the tenant can't grant it, the pragmatic fallback used
 elsewhere is a Power Automate flow triggered by email/webhook; the provider seam
