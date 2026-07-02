@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { InvoiceSummary } from '@finny/shared';
 import { api } from '../api';
 import { ago, euros, shortDate } from '../format';
@@ -25,6 +25,7 @@ const SCENARIOS: { key: string; label: string }[] = [
 
 export default function Queue() {
   const { settings, approverName, overview, refreshOverview } = useMeta();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'needs_review';
   const [rows, setRows] = useState<InvoiceSummary[] | null>(null);
@@ -147,7 +148,14 @@ export default function Queue() {
           </thead>
           <tbody>
             {rows.map((inv) => (
-              <tr key={inv.id}>
+              <tr
+                key={inv.id}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('a')) return; // real links handle themselves
+                  if (window.getSelection()?.toString()) return; // don't hijack text selection
+                  navigate(`/invoices/${inv.id}`);
+                }}
+              >
                 <td>
                   <Link to={`/invoices/${inv.id}`} className="row-link">
                     {shortDate(inv.received_at)} <small className="muted">{ago(inv.received_at)}</small>
