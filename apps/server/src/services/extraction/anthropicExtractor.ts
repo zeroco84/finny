@@ -46,6 +46,14 @@ const EXTRACTION_TOOL = {
       vat_rate: { ...fieldSchema, description: 'VAT rate percent as a plain number string, e.g. "23"' },
       vat_number: { ...fieldSchema, description: 'Supplier VAT registration number' },
       po_number: { ...fieldSchema, description: 'Purchase order number if present' },
+      billed_to_entity: {
+        ...fieldSchema,
+        description: 'Which of the provided legal entities this invoice is addressed to (exact name from the list), or null',
+      },
+      project: {
+        ...fieldSchema,
+        description: 'The CODE of the provided project this document references (by name, code or site), or null',
+      },
       line_items: {
         type: 'array',
         description: 'Line items where legible; empty array when not feasible',
@@ -84,7 +92,8 @@ const EXTRACTION_TOOL = {
     },
     required: [
       'doc_type', 'vendor_name', 'invoice_ref', 'invoice_date', 'net', 'vat', 'gross',
-      'vat_rate', 'vat_number', 'po_number', 'line_items', 'proposed_category', 'proposed_approver',
+      'vat_rate', 'vat_number', 'po_number', 'billed_to_entity', 'project',
+      'line_items', 'proposed_category', 'proposed_approver',
     ],
     additionalProperties: false,
   },
@@ -96,6 +105,7 @@ const zResult = z.object({
   vendor_name: zField, invoice_ref: zField, invoice_date: zField,
   net: zField, vat: zField, gross: zField,
   vat_rate: zField, vat_number: zField, po_number: zField,
+  billed_to_entity: zField, project: zField,
   line_items: z.array(z.object({
     description: z.string(),
     quantity: z.number().nullable(),
@@ -116,12 +126,16 @@ function systemPrompt(context: RulesContext): string {
     '- Sanity-check amounts: net + VAT should equal gross. If they do not reconcile, still report what is printed but lower your confidence on the amount fields.',
     '- doc_type: only classify as "invoice" if this is a bill requesting payment. Supplier statements, remittance advice, marketing and anything else must be classified accordingly.',
     '- proposed_category.name must be one of the provided categories or null. proposed_approver.email must be one of the provided approver emails or null.',
+    '- billed_to_entity.value: Meadowvale runs several legal entities — read the "Bill To"/addressee block and return the exact matching name from the provided legal_entities list, or null if it is unclear or matches none of them.',
+    '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise null. Never invent project codes.',
     '- If a learned vendor rule below matches this vendor, propose its category/approver with high confidence and say so in the rationale. Otherwise propose from the document contents with appropriately lower confidence.',
     '',
     'Structured context (learned rules layer — maintained and audited by the AP team):',
     JSON.stringify(
       {
         expense_categories: context.categories,
+        legal_entities: context.entities,
+        projects: context.projects,
         approvers: context.approvers,
         learned_vendor_rules: context.vendor_rules,
         extraction_hints: context.extraction_hints,
@@ -199,6 +213,8 @@ export const anthropicExtractor: Extractor = {
       vat_rate: clamp(parsed.vat_rate),
       vat_number: clamp(parsed.vat_number),
       po_number: clamp(parsed.po_number),
+      billed_to_entity: clamp(parsed.billed_to_entity),
+      project: clamp(parsed.project),
       line_items: parsed.line_items.map((li) => ({
         description: li.description,
         quantity: li.quantity,

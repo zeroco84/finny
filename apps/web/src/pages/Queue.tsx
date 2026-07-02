@@ -170,6 +170,12 @@ export default function Queue() {
                         {inv.doc_type}
                       </span>
                     )}
+                    {inv.entity && (
+                      <div className="muted small">
+                        {inv.entity}
+                        {inv.project_code ? ` · ${inv.project_code}` : ''}
+                      </div>
+                    )}
                   </Link>
                 </td>
                 <td>{inv.invoice_ref ?? '—'}</td>

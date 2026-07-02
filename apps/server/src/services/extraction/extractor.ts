@@ -21,6 +21,10 @@ export interface ExtractionResult {
   vat_rate: ExtractedField;
   vat_number: ExtractedField;
   po_number: ExtractedField;
+  /** Which configured legal entity the document is addressed to (canonical name). */
+  billed_to_entity: ExtractedField;
+  /** Configured project code the document references, if any. */
+  project: ExtractedField;
   line_items: LineItem[];
   proposed_category: { name: string | null; confidence: number; rationale: string };
   proposed_approver: { email_or_name: string | null; confidence: number; rationale: string };
@@ -33,6 +37,8 @@ export interface ExtractionResult {
  */
 export interface RulesContext {
   categories: { name: string }[];
+  entities: string[];
+  projects: { name: string; code: string }[];
   approvers: { name: string; email: string }[];
   vendor_rules: { vendor: string; category: string | null; approver_email: string | null; confirmed: number }[];
   extraction_hints: { vendor: string; hint: string }[];
@@ -56,6 +62,8 @@ export function buildRulesContext(vendorNormalizedHint?: string | null): RulesCo
     .filter((h) => h.hint);
   return {
     categories: settings.categories.map((c) => ({ name: c.name })),
+    entities: settings.entities,
+    projects: settings.projects.map((p) => ({ name: p.name, code: p.code })),
     approvers: approvers.map((a) => ({ name: a.name, email: a.email })),
     vendor_rules: vendorRules,
     extraction_hints: hints,

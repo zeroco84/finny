@@ -15,6 +15,8 @@ const FIELD_LABELS: Record<string, string> = {
   vat_rate: 'VAT rate',
   vat_number: 'VAT number',
   po_number: 'PO number',
+  entity: 'Billed-to entity',
+  project: 'Project',
   category: 'Category',
   approver: 'Approver',
 };

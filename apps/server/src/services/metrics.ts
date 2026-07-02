@@ -20,7 +20,7 @@ function fieldAccuracy(fields: string[]): FieldAccuracy[] {
 export function dashboardMetrics(): DashboardMetrics {
   const extractionFields = [
     'vendor_name', 'invoice_ref', 'invoice_date', 'net_cents', 'vat_cents',
-    'gross_cents', 'vat_rate', 'vat_number', 'po_number',
+    'gross_cents', 'vat_rate', 'vat_number', 'po_number', 'entity', 'project',
   ];
 
   // Correction rate per week: share of reviewed invoices needing a routing fix.

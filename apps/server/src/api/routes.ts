@@ -26,7 +26,7 @@ import { emailProviderName, listAlerts, openAlertCount, setAlertStatus } from '.
 import {
   batchFilePath,
   exportPool,
-  generateBatch,
+  generateBatches,
   getBatch,
   listBatches,
   markImported,
@@ -194,6 +194,8 @@ export function buildRouter(): Router {
     }),
     category: z.string().max(100).nullable(),
     approver_id: z.string().max(60).nullable(),
+    entity: z.string().max(200).nullable(),
+    project_code: z.string().max(30).nullable(),
   });
 
   router.post('/invoices/:id/review', async (req, res) => {
@@ -359,7 +361,7 @@ export function buildRouter(): Router {
       return;
     }
     try {
-      res.json(await generateBatch(ids.data, req.user!.email));
+      res.json(await generateBatches(ids.data, req.user!.email));
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Export failed' });
     }

@@ -25,11 +25,19 @@ export default function ExportsPage() {
     void load();
   }, [load]);
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   async function generate() {
     setBusy(true);
     setError(null);
     try {
-      await api.generateBatch([...selected]);
+      const created = await api.generateBatches([...selected]);
+      setNotice(
+        created.length > 1
+          ? `Generated ${created.length} batches — one per legal entity (each imports into its own Sage company).`
+          : `Generated ${created[0].filename}.`,
+      );
+      setTimeout(() => setNotice(null), 8000);
       await load();
       await refreshOverview();
     } catch (e) {
@@ -49,10 +57,13 @@ export default function ExportsPage() {
         <h1>Sage 50 export</h1>
       </div>
       <p className="muted">
-        Confirmed invoices batch into a Sage 50 audit-trail import file (type PI). Generate a batch, download
-        the CSV, import it in Sage, then mark the batch imported. Every step is recorded on the invoice's history.
+        Confirmed invoices batch into the AP posting format (A/C · Date · Ref · Ex Ref · N/C · Dept ·
+        Details · Net · T/C · Vat · Gross), one file per legal entity, with sequential posting refs
+        assigned automatically. Generate, download, post in Sage, then mark imported — every step is
+        recorded on the invoice's history.
       </p>
       {error && <Banner kind="error">{error}</Banner>}
+      {notice && <Banner kind="success">{notice}</Banner>}
 
       <div className="card">
         <h2>Ready to export ({pool.length})</h2>
@@ -64,7 +75,7 @@ export default function ExportsPage() {
               <thead>
                 <tr>
                   <th />
-                  <th>Vendor</th><th>Ref</th><th>Date</th><th className="num">Gross</th><th>Approval</th>
+                  <th>Vendor</th><th>Ref</th><th>Entity</th><th>Date</th><th className="num">Gross</th><th>Approval</th>
                 </tr>
               </thead>
               <tbody>
@@ -83,6 +94,7 @@ export default function ExportsPage() {
                     </td>
                     <td><Link to={`/invoices/${inv.id}`}>{inv.vendor_name}</Link></td>
                     <td>{inv.invoice_ref}</td>
+                    <td className="muted">{inv.entity ?? '—'}{inv.project_code ? ` · ${inv.project_code}` : ''}</td>
                     <td>{shortDate(inv.invoice_date)}</td>
                     <td className="num">{euros(inv.gross_cents)}</td>
                     <td><StatusChip status={inv.status} /></td>
@@ -109,12 +121,13 @@ export default function ExportsPage() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Created</th><th>File</th><th className="num">Invoices</th><th className="num">Total</th><th>Status</th><th /></tr>
+              <tr><th>Created</th><th>Entity</th><th>File</th><th className="num">Invoices</th><th className="num">Total</th><th>Status</th><th /></tr>
             </thead>
             <tbody>
               {batches.map((b) => (
                 <tr key={b.id}>
                   <td>{dateTime(b.created_at)} <small className="muted">by {b.created_by}</small></td>
+                  <td className="muted">{b.entity ?? '—'}</td>
                   <td><a href={`/api/exports/${b.id}/download`}>{b.filename}</a></td>
                   <td className="num">{b.invoice_count}</td>
                   <td className="num">{euros(b.total_gross_cents)}</td>

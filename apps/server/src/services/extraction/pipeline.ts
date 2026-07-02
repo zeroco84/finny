@@ -5,6 +5,7 @@ import { normalizeVendor, nowIso, parseInvoiceDate, parseMoneyToCents, suggestAc
 import { audit } from '../audit.js';
 import { raiseAlert } from '../alerts.js';
 import { findDuplicate, getInvoiceRow } from '../invoices.js';
+import { getSettings } from '../settings.js';
 import { resolveRouting } from '../routing.js';
 import { buildRulesContext, getExtractor, UnreadableDocumentError } from './extractor.js';
 
@@ -51,6 +52,16 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     const invoiceDate = parseInvoiceDate(result.invoice_date.value);
     const vatRate = result.vat_rate.value !== null ? Number(result.vat_rate.value) : null;
 
+    // Entity/project only count as extracted when they match the configured
+    // lists — accounting must never post to an unknown entity or project.
+    const settingsNow = getSettings();
+    const entity = settingsNow.entities.includes(result.billed_to_entity.value ?? '')
+      ? result.billed_to_entity.value
+      : null;
+    const projectCode = settingsNow.projects.some((p) => p.code === result.project.value)
+      ? result.project.value
+      : null;
+
     const confidence: Partial<Record<ConfidenceField, number>> = {
       vendor_name: result.vendor_name.confidence,
       invoice_ref: result.invoice_ref.confidence,
@@ -61,6 +72,8 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       vat_rate: vatRate !== null && Number.isFinite(vatRate) ? result.vat_rate.confidence : 0,
       vat_number: result.vat_number.confidence,
       po_number: result.po_number.confidence,
+      entity: entity ? result.billed_to_entity.confidence : 0,
+      project: projectCode ? result.project.confidence : 0,
     };
 
     const routing = resolveRouting(vendorName, vendorNormalized, result.proposed_category, {
@@ -79,6 +92,8 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       vat_rate: Number.isFinite(vatRate as number) ? vatRate : null,
       vat_number: result.vat_number.value,
       po_number: result.po_number.value,
+      entity,
+      project_code: projectCode,
       category: routing.proposed_category,
       approver_id: routing.proposed_approver_id,
     };
@@ -104,6 +119,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
          status = 'needs_review', doc_type = ?, vendor_name = ?, vendor_normalized = ?,
          invoice_ref = ?, invoice_date = ?, net_cents = ?, vat_cents = ?, gross_cents = ?,
          vat_rate = ?, vat_number = ?, po_number = ?, supplier_account_ref = ?,
+         entity = ?, project_code = ?,
          line_items = ?, field_confidence = ?, extraction_snapshot = ?, extraction_provider = ?,
          extraction_error = NULL,
          proposed_category = ?, proposed_approver_id = ?, routing_confidence = ?,
@@ -121,6 +137,8 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       result.vat_number.value,
       result.po_number.value,
       accountRef,
+      entity,
+      projectCode,
       JSON.stringify(result.line_items),
       JSON.stringify(confidence),
       JSON.stringify(snapshot),

@@ -86,7 +86,7 @@ export const api = {
 
   exportPool: () => get<InvoiceSummary[]>('/exports/pool'),
   batches: () => get<SageBatch[]>('/exports'),
-  generateBatch: (invoiceIds: string[]) => post<SageBatch>('/exports', { invoice_ids: invoiceIds }),
+  generateBatches: (invoiceIds: string[]) => post<SageBatch[]>('/exports', { invoice_ids: invoiceIds }),
   markImported: (id: string) => post<SageBatch>(`/exports/${id}/mark-imported`),
 
   dashboard: () => get<DashboardMetrics>('/metrics/dashboard'),

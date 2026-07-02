@@ -65,6 +65,8 @@ export const mockExtractor: Extractor = {
         vat_rate: emptyField(),
         vat_number: emptyField(),
         po_number: emptyField(),
+        billed_to_entity: emptyField(),
+        project: emptyField(),
         line_items: [],
         proposed_category: {
           name: null,
@@ -116,6 +118,25 @@ export const mockExtractor: Extractor = {
       /(?:po\s*(?:number|no|#)?|purchase\s*order(?:\s*(?:number|no))?|your\s*order\s*ref)\s*[:.]?\s*([A-Z]{2}[A-Z0-9\-]{3,})/i,
     ]);
 
+    // Billed-to entity: read the Bill To line and match it against the
+    // configured legal entities (canonical name wins over the raw string).
+    const billToLine = match(text, [/bill(?:ed)?\s*to\s*[:.]?\s*(.+)/i]);
+    let entity: string | null = null;
+    if (billToLine) {
+      const lower = billToLine.toLowerCase();
+      entity = context.entities.find((e) => lower.includes(e.toLowerCase())) ?? null;
+    }
+
+    // Project: any configured project referenced by name or code.
+    let project: string | null = null;
+    const textLower = text.toLowerCase();
+    for (const p of context.projects) {
+      if (textLower.includes(p.name.toLowerCase()) || new RegExp(`\\b${p.code}\\b`).test(text)) {
+        project = p.code;
+        break;
+      }
+    }
+
     const lineItems: LineItem[] = [];
     for (const line of lines) {
       const m = line.match(/^(.{4,60}?)\s{2,}(\d+(?:\.\d+)?)\s{2,}€?([\d,]+\.\d{2})\s{2,}€?([\d,]+\.\d{2})$/);
@@ -154,6 +175,8 @@ export const mockExtractor: Extractor = {
       vat_rate: field(vatRate, 'vat_rate'),
       vat_number: field(vatNumber, 'vat_number'),
       po_number: field(po, 'po'),
+      billed_to_entity: field(entity, 'entity'),
+      project: field(project, 'project'),
       line_items: lineItems,
       proposed_category: { name: category, confidence: category ? 0.7 : 0, rationale: categoryRationale },
       // The mock provider never guesses an approver: routing comes from the

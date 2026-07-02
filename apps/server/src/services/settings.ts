@@ -7,6 +7,16 @@ export const DEFAULT_SETTINGS: Settings = {
   confidence_threshold: 0.75,
   review_sla_hours: 4,
   alert_recipients: ['finance-alerts@example.com'],
+  entities: [
+    'Meadowvale Developments Ltd',
+    'Meadowvale Construction Ltd',
+    'Meadowvale Asset Management Ltd',
+  ],
+  projects: [
+    { name: 'Clongriffin Phase 3', code: 'CLON3', dept: '26' },
+    { name: 'Dock Mill', code: 'DOCKM', dept: '28' },
+    { name: 'Santry Cross', code: 'SANTX', dept: '30' },
+  ],
   categories: [
     { name: 'Site Costs', nominal_code: '5000' },
     { name: 'Materials', nominal_code: '5200' },
@@ -15,11 +25,13 @@ export const DEFAULT_SETTINGS: Settings = {
     { name: 'Utilities', nominal_code: '7200' },
     { name: 'Office & Admin', nominal_code: '7500' },
   ],
-  // Irish VAT rates -> Sage 50 tax codes. Review against the live Sage config
-  // before the first real import (codes are configurable per install).
-  tax_codes: { '23': 'T1', '13.5': 'T2', '9': 'T3', '4.8': 'T4', '0': 'T0' },
+  // Irish VAT rates -> Sage 50 tax codes. Zero-VAT lines post as T9 (outside
+  // scope) per the AP team's posting sheet; review against the live Sage
+  // config before the first real import.
+  tax_codes: { '23': 'T1', '13.5': 'T2', '9': 'T3', '4.8': 'T4', '0': 'T9' },
   default_tax_code: 'T1',
   sage_department: '0',
+  next_posting_ref: 10001,
   rule_apply: { category: 'auto', approver: 'review' },
 };
 
@@ -58,7 +70,14 @@ export function getSettings(): Settings {
   for (const row of rows) {
     out[row.key] = jsonParse(row.value, (DEFAULT_SETTINGS as unknown as Record<string, unknown>)[row.key]);
   }
-  return out as unknown as Settings;
+  const settings = out as unknown as Settings;
+  // Shape migration: projects stored before depts existed get theirs
+  // backfilled (seeded codes from the defaults, otherwise blank -> fallback).
+  settings.projects = settings.projects.map((p) => ({
+    ...p,
+    dept: p.dept ?? DEFAULT_SETTINGS.projects.find((d) => d.code === p.code)?.dept ?? '',
+  }));
+  return settings;
 }
 
 export function updateSettings(patch: Partial<Settings>): Settings {

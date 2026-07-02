@@ -17,7 +17,7 @@ import { simulateIncomingInvoice } from '../src/services/simulator/simulator.js'
 import { processInvoice } from '../src/services/extraction/pipeline.js';
 import { submitReview } from '../src/services/review.js';
 import { listRules, decidePendingRule } from '../src/services/rules.js';
-import { generateBatch } from '../src/services/sage.js';
+import { generateBatches } from '../src/services/sage.js';
 import { latestApproval } from '../src/services/invoices.js';
 import { recordApprovalDecision } from '../src/services/approvals/approvals.js';
 import { suggestAccountRef } from '../src/domain/util.js';
@@ -89,6 +89,8 @@ async function reviewInvoice(
     },
     category: routing?.category ?? 'Site Costs',
     approver_id: approver?.id ?? approvers[0].id,
+    entity: row.entity === null ? getSettings().entities[0] : String(row.entity),
+    project_code: row.project_code === null ? null : String(row.project_code),
   };
   await submitReview(invoiceId, submission, who);
 }
@@ -154,7 +156,7 @@ async function main(): Promise<void> {
   }
 
   // A batch goes to Sage; managers decide most of the approvals in Teams.
-  await generateBatch(confirmed.slice(0, 4), PROCESSOR.email);
+  await generateBatches(confirmed.slice(0, 4), PROCESSOR.email);
   for (let i = 0; i < confirmed.length - 1; i++) {
     const approval = latestApproval(confirmed[i]);
     if (approval && approval.status === 'pending') {

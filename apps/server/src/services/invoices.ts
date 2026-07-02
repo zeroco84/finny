@@ -44,6 +44,8 @@ export function toSummary(r: InvoiceRow): InvoiceSummary {
     category: str(r.category),
     approver_id: str(r.approver_id),
     proposed_approver_id: str(r.proposed_approver_id),
+    entity: str(r.entity),
+    project_code: str(r.project_code),
     routing_confidence: num(r.routing_confidence),
     min_required_confidence:
       r.status === 'received' || r.status === 'extracting' ? null : minRequiredConfidence(confidence),

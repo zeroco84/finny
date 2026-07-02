@@ -4,7 +4,18 @@ import { mockExtractor } from '../src/services/extraction/mockExtractor.js';
 import { UnreadableDocumentError } from '../src/services/extraction/extractor.js';
 import { parseMoneyToCents } from '../src/domain/util.js';
 
-const context = { categories: [{ name: 'Materials' }], approvers: [], vendor_rules: [], extraction_hints: [] };
+const context = {
+  categories: [{ name: 'Materials' }],
+  entities: ['Meadowvale Developments Ltd', 'Meadowvale Construction Ltd', 'Meadowvale Asset Management Ltd'],
+  projects: [
+    { name: 'Clongriffin Phase 3', code: 'CLON3' },
+    { name: 'Dock Mill', code: 'DOCKM' },
+    { name: 'Santry Cross', code: 'SANTX' },
+  ],
+  approvers: [],
+  vendor_rules: [],
+  extraction_hints: [],
+};
 
 // Deterministic rng so amounts/refs are stable across runs.
 function seededRng(seed = 42): () => number {
@@ -33,6 +44,13 @@ describe('sample invoice -> mock extractor round trip', () => {
     expect(Math.abs(net + vat - gross)).toBeLessThanOrEqual(1);
     expect(result.vendor_name.confidence).toBeGreaterThan(0.8);
     expect(result.proposed_category.name).toBe('Materials');
+    // Billed-to entity resolves to one of the configured legal entities.
+    expect(context.entities).toContain(result.billed_to_entity.value);
+    expect(result.billed_to_entity.confidence).toBeGreaterThan(0.8);
+    // Project is either absent or one of the configured codes — never invented.
+    if (result.project.value !== null) {
+      expect(context.projects.map((p) => p.code)).toContain(result.project.value);
+    }
   });
 
   it('leaves missing fields blank instead of fabricating them', async () => {

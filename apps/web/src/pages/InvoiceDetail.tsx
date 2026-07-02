@@ -19,6 +19,8 @@ interface FormState {
   supplier_account_ref: string;
   category: string;
   approver_id: string;
+  entity: string;
+  project_code: string;
 }
 
 function fromDetail(d: InvoiceDetail): FormState {
@@ -35,6 +37,8 @@ function fromDetail(d: InvoiceDetail): FormState {
     supplier_account_ref: d.supplier_account_ref ?? '',
     category: d.category ?? d.proposed_category ?? '',
     approver_id: d.approver_id ?? d.proposed_approver_id ?? '',
+    entity: d.entity ?? '',
+    project_code: d.project_code ?? '',
   };
 }
 
@@ -127,6 +131,8 @@ export default function InvoiceDetailPage() {
         fields: submission,
         category: form.category || null,
         approver_id: form.approver_id || null,
+        entity: form.entity || null,
+        project_code: form.project_code || null,
       });
       setDetail(updated);
       setForm(fromDetail(updated));
@@ -272,6 +278,27 @@ export default function InvoiceDetailPage() {
               {field('VAT number', 'vat_number', 'vat_number', { aiValue: snapshot?.vat_number })}
               {field('PO number', 'po_number', 'po_number', { aiValue: snapshot?.po_number })}
               {field('Sage supplier A/C', 'supplier_account_ref', null, { placeholder: 'e.g. HEGARTY1' })}
+              <label className="field">
+                <span className="field-label">
+                  Billed to (entity)
+                  {editable && (
+                    <ConfidenceBadge value={detail.field_confidence.entity ?? 0} threshold={settings.confidence_threshold} />
+                  )}
+                </span>
+                <select
+                  value={form.entity}
+                  disabled={!editable}
+                  onChange={(e) => setForm({ ...form, entity: e.target.value })}
+                >
+                  <option value="">— choose —</option>
+                  {settings.entities.map((ent) => (
+                    <option key={ent} value={ent}>{ent}</option>
+                  ))}
+                </select>
+                {snapshot?.entity && snapshot.entity !== form.entity && form.entity !== '' && (
+                  <span className="ai-ghost">AI read: {snapshot.entity}</span>
+                )}
+              </label>
             </div>
             {detail.line_items.length > 0 && (
               <details className="line-items">
@@ -327,6 +354,30 @@ export default function InvoiceDetailPage() {
                 </select>
                 {snapshot?.approver_id && snapshot.approver_id !== form.approver_id && form.approver_id !== '' && (
                   <span className="ai-ghost">AI proposed: {approverName(snapshot.approver_id)}</span>
+                )}
+              </label>
+              <label className="field">
+                <span className="field-label">
+                  Project
+                  {editable && (
+                    <ConfidenceBadge value={detail.field_confidence.project ?? 0} threshold={settings.confidence_threshold} />
+                  )}
+                </span>
+                <select
+                  value={form.project_code}
+                  disabled={!editable}
+                  onChange={(e) => setForm({ ...form, project_code: e.target.value })}
+                >
+                  <option value="">— none —</option>
+                  {settings.projects.map((p) => (
+                    <option key={p.code} value={p.code}>{p.name} ({p.code})</option>
+                  ))}
+                </select>
+                {snapshot?.project_code && snapshot.project_code !== form.project_code && form.project_code !== '' && (
+                  <span className="ai-ghost">AI read: {snapshot.project_code}</span>
+                )}
+                {!snapshot?.project_code && form.project_code === '' && editable && (
+                  <span className="muted small">No project referenced on the document — assign one if it belongs to a job.</span>
                 )}
               </label>
             </div>

@@ -12,3 +12,6 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# real AP data dropped in for reference — never commit
+*.xlsx

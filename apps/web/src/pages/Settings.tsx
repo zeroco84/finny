@@ -163,6 +163,90 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
+        <h2>Legal entities &amp; projects</h2>
+        <p className="muted small">
+          Entities are the companies invoices can be addressed to — each maps to its own Sage
+          company dataset, and exports batch per entity. Projects land in Sage's Project Refn.
+        </p>
+        <div className="dash-grid">
+          <div>
+            <table className="table table-compact">
+              <thead><tr><th>Entity</th><th /></tr></thead>
+              <tbody>
+                {draft.entities.map((ent, i) => (
+                  <tr key={i}>
+                    <td><input disabled={dis} value={ent} onChange={(e) => {
+                      const entities = [...draft.entities];
+                      entities[i] = e.target.value;
+                      setDraft({ ...draft, entities });
+                    }} /></td>
+                    <td>{isLead && (
+                      <button className="btn btn-small btn-danger-ghost"
+                        onClick={() => setDraft({ ...draft, entities: draft.entities.filter((_, j) => j !== i) })}>
+                        Remove
+                      </button>
+                    )}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isLead && (
+              <button className="btn btn-small"
+                onClick={() => setDraft({ ...draft, entities: [...draft.entities, ''] })}>
+                Add entity
+              </button>
+            )}
+          </div>
+          <div>
+            <table className="table table-compact">
+              <thead><tr><th>Project</th><th>Code</th><th title="Sage department number for this site">Dept</th><th /></tr></thead>
+              <tbody>
+                {draft.projects.map((p, i) => (
+                  <tr key={i}>
+                    <td><input disabled={dis} value={p.name} onChange={(e) => {
+                      const projects = [...draft.projects];
+                      projects[i] = { ...p, name: e.target.value };
+                      setDraft({ ...draft, projects });
+                    }} /></td>
+                    <td><input disabled={dis} value={p.code} onChange={(e) => {
+                      const projects = [...draft.projects];
+                      projects[i] = { ...p, code: e.target.value.toUpperCase() };
+                      setDraft({ ...draft, projects });
+                    }} /></td>
+                    <td><input disabled={dis} value={p.dept ?? ''} onChange={(e) => {
+                      const projects = [...draft.projects];
+                      projects[i] = { ...p, dept: e.target.value };
+                      setDraft({ ...draft, projects });
+                    }} /></td>
+                    <td>{isLead && (
+                      <button className="btn btn-small btn-danger-ghost"
+                        onClick={() => setDraft({ ...draft, projects: draft.projects.filter((_, j) => j !== i) })}>
+                        Remove
+                      </button>
+                    )}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isLead && (
+              <button className="btn btn-small"
+                onClick={() => setDraft({ ...draft, projects: [...draft.projects, { name: '', code: '', dept: '' }] })}>
+                Add project
+              </button>
+            )}
+          </div>
+        </div>
+        {isLead && (
+          <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => void save({
+            entities: draft.entities.map((e) => e.trim()).filter(Boolean),
+            projects: draft.projects.filter((p) => p.name && p.code),
+          })}>
+            Save entities &amp; projects
+          </button>
+        )}
+      </div>
+
+      <div className="card">
         <h2>VAT rates → Sage tax codes</h2>
         <div className="taxcode-row">
           {Object.entries(draft.tax_codes).map(([rate, code]) => (
@@ -178,17 +262,26 @@ export default function SettingsPage() {
               onChange={(e) => setDraft({ ...draft, default_tax_code: e.target.value })} />
           </label>
           <label className="field field-tight">
-            <span className="field-label">Department</span>
+            <span className="field-label" title="Dept used when an invoice has no project">Fallback dept</span>
             <input disabled={dis} value={draft.sage_department}
               onChange={(e) => setDraft({ ...draft, sage_department: e.target.value })} />
           </label>
+          <label className="field field-tight">
+            <span className="field-label" title='Next sequential posting reference (the "Inv27xxx" Ref column)'>Next Ref №</span>
+            <input type="number" disabled={dis} value={draft.next_posting_ref}
+              onChange={(e) => setDraft({ ...draft, next_posting_ref: Number(e.target.value) })} />
+          </label>
         </div>
-        <p className="muted small">Match these to the live Sage 50 configuration before the first real import.</p>
+        <p className="muted small">
+          Match these to the live Sage 50 configuration before the first real import. The Ref number
+          advances automatically each export (refs land in the CSV and on each invoice).
+        </p>
         {isLead && (
           <button className="btn btn-small btn-primary" onClick={() => void save({
             tax_codes: draft.tax_codes,
             default_tax_code: draft.default_tax_code,
             sage_department: draft.sage_department,
+            next_posting_ref: draft.next_posting_ref,
           })}>
             Save Sage mapping
           </button>

@@ -26,6 +26,8 @@ export const CONFIDENCE_FIELDS = [
   'vat_rate',
   'vat_number',
   'po_number',
+  'entity',
+  'project',
 ] as const;
 export type ConfidenceField = (typeof CONFIDENCE_FIELDS)[number];
 
@@ -50,8 +52,18 @@ export interface ExtractionSnapshot {
   vat_rate: number | null; // percent
   vat_number: string | null;
   po_number: string | null;
+  /** Which Meadowvale legal entity the invoice is addressed to. */
+  entity: string | null;
+  /** Project code the document references (from the configured project list). */
+  project_code: string | null;
   category: string | null;
   approver_id: string | null;
+}
+
+export interface Project {
+  name: string;
+  code: string; // short code shown in Finny and used in Details
+  dept: string; // Sage department number for this site/development (Dept column)
 }
 
 export interface Approver {
@@ -80,6 +92,8 @@ export interface InvoiceSummary {
   category: string | null;
   approver_id: string | null;
   proposed_approver_id: string | null;
+  entity: string | null;
+  project_code: string | null;
   routing_confidence: number | null;
   min_required_confidence: number | null; // lowest confidence among required fields
   duplicate_of: string | null;
@@ -210,6 +224,8 @@ export interface SageBatch {
   id: string;
   created_by: string;
   created_at: string;
+  /** Legal entity this batch belongs to — one Sage company dataset per batch. */
+  entity: string | null;
   filename: string;
   invoice_count: number;
   total_gross_cents: number;
@@ -224,9 +240,14 @@ export interface Settings {
   review_sla_hours: number; // low-confidence invoice untouched this long -> alert
   alert_recipients: string[];
   categories: Category[];
+  /** Legal entities invoices may be addressed to (each = a Sage company dataset). */
+  entities: string[];
+  projects: Project[];
   tax_codes: Record<string, string>; // vat rate (as string, e.g. "23") -> Sage tax code
   default_tax_code: string;
-  sage_department: string;
+  sage_department: string; // fallback Dept when an invoice has no project
+  /** Next internal posting reference number (the sheet's sequential "Inv27xxx" Ref column). */
+  next_posting_ref: number;
   rule_apply: { category: 'auto' | 'review'; approver: 'auto' | 'review' };
 }
 
@@ -315,4 +336,8 @@ export interface ReviewSubmission {
   };
   category: string | null;
   approver_id: string | null;
+  /** Required for confirm: which legal entity's books this posts to. */
+  entity: string | null;
+  /** Optional project assignment (configured project code). */
+  project_code: string | null;
 }

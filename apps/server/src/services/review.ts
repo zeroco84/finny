@@ -112,6 +112,7 @@ export async function submitReview(
     if (f.gross_cents === null) missing.push('gross amount');
     if (!submission.category) missing.push('category');
     if (!submission.approver_id) missing.push('approver');
+    if (!submission.entity) missing.push('billed-to entity');
     if (!f.supplier_account_ref) missing.push('supplier account ref');
     if (missing.length > 0) {
       throw new ReviewError(`Cannot confirm — missing: ${missing.join(', ')}`);
@@ -122,6 +123,13 @@ export async function submitReview(
     if (submission.category && !settings.categories.some((c) => c.name === submission.category)) {
       throw new ReviewError('Unknown category');
     }
+    if (submission.entity && !settings.entities.includes(submission.entity)) {
+      throw new ReviewError('Unknown billed-to entity — add it in Settings first');
+    }
+  }
+  // Project is optional in every mode, but when set it must be a known one.
+  if (submission.project_code && !settings.projects.some((p) => p.code === submission.project_code)) {
+    throw new ReviewError('Unknown project — add it in Settings first');
   }
 
   // ── Structured feedback: diff human values against the AI snapshot ────────
@@ -142,6 +150,16 @@ export async function submitReview(
         correctionCount++;
       }
     }
+    recordComparison(invoiceId, 'entity', snapshot.entity, submission.entity);
+    if (snapshot.entity !== submission.entity) {
+      recordCorrection(invoiceId, 'extraction', 'entity', snapshot.entity, submission.entity, who);
+      correctionCount++;
+    }
+    recordComparison(invoiceId, 'project', snapshot.project_code, submission.project_code);
+    if (snapshot.project_code !== submission.project_code) {
+      recordCorrection(invoiceId, 'extraction', 'project', snapshot.project_code, submission.project_code, who);
+      correctionCount++;
+    }
     recordComparison(invoiceId, 'category', snapshot.category, submission.category);
     if (snapshot.category !== submission.category) {
       recordCorrection(invoiceId, 'routing_category', 'category', snapshot.category, submission.category, who);
@@ -161,13 +179,14 @@ export async function submitReview(
     `UPDATE invoices SET
        vendor_name = ?, vendor_normalized = ?, invoice_ref = ?, invoice_date = ?,
        net_cents = ?, vat_cents = ?, gross_cents = ?, vat_rate = ?, vat_number = ?, po_number = ?,
-       supplier_account_ref = ?, category = ?, approver_id = ?,
+       supplier_account_ref = ?, category = ?, approver_id = ?, entity = ?, project_code = ?,
        duplicate_of = ?, reviewed_by = ?, reviewed_at = ?, shadow = ?,
        status = ?, confirmed_at = ?, updated_at = ?
      WHERE id = ?`,
     f.vendor_name, vendorNormalized, f.invoice_ref, f.invoice_date,
     f.net_cents, f.vat_cents, f.gross_cents, f.vat_rate, f.vat_number, f.po_number,
     f.supplier_account_ref, submission.category, submission.approver_id,
+    submission.entity, submission.project_code,
     findDuplicate(invoiceId, vendorNormalized, f.invoice_ref),
     who, now, isShadow ? 1 : 0,
     isShadow ? 'shadow_complete' : 'confirmed',
@@ -182,6 +201,8 @@ export async function submitReview(
     mode: isShadow ? 'shadow' : 'live',
     category: submission.category,
     approver_id: submission.approver_id,
+    entity: submission.entity,
+    project_code: submission.project_code,
   });
 
   // ── Feed the learned-rules layer ──────────────────────────────────────────

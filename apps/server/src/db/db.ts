@@ -10,7 +10,22 @@ export function openDb(dbPath: string): DatabaseSync {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Additive migrations: CREATE TABLE IF NOT EXISTS won't touch existing DBs. */
+function migrate(database: DatabaseSync): void {
+  const ensureColumn = (table: string, name: string, definition: string) => {
+    const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === name)) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  };
+  ensureColumn('invoices', 'entity', 'TEXT');
+  ensureColumn('invoices', 'project_code', 'TEXT');
+  ensureColumn('invoices', 'posting_ref', 'TEXT');
+  ensureColumn('sage_batches', 'entity', 'TEXT');
 }
 
 export function getDb(): DatabaseSync {

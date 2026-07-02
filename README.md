@@ -68,7 +68,7 @@ You can also ingest real invoices with zero setup: drop PDFs into `apps/server/d
 | Corrections as structured feedback | `corrections` table, written by `review.ts` | — |
 | Learned rules layer | `rules.ts` + Rules page | structured table injected into the prompt as JSON context — not an unbounded prompt string |
 | Lead approval of rule changes | `rule_apply` setting (per type: category auto / approver review by default) | configurable in Settings |
-| Sage 50 batch export | `sage.ts` + Sage page | CSV, audit-trail PI import format |
+| Sage 50 batch export | `sage.ts` + Sage page | CSV matching the AP posting sheet, one file per entity |
 | Teams Approvals | `approvals/approvals.ts` | `mock` (simulator) → `APPROVALS_PROVIDER=graph` (beta endpoint) |
 | Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → SMTP email when configured |
 | Audit trail | `audit_events` table, timeline on every invoice | — |
@@ -147,14 +147,18 @@ Dev sign-in is a signed session cookie issued by `/api/auth/dev-login`. For prod
 JWKS) and map an AD group to the `lead` role; the whole app consumes only `req.user`
 (`{email, name, role}`), and the web app's login page gets replaced by the MSAL redirect.
 
-### Sage 50 import format — validate before first real use
+### Sage 50 posting format — matches the AP team's sheet
 
-The export is the classic Sage 50 (UK/IE) **audit-trail transactions** CSV, type `PI`, one row
-per invoice: supplier account ref, nominal code (from the category map in Settings), department,
-date `dd/mm/yyyy`, reference, details, net, tax code (from the VAT-rate map), tax amount.
-Run one small batch through **File → Import** on the live Sage install and adjust the nominal /
-tax-code maps in Settings to match its configuration. Supplier account refs are suggested from
-the vendor name and editable per invoice; Finny reuses the last-used ref per vendor.
+The export mirrors the team's "Invoices to be posted" workbook column-for-column:
+`A/C, Date, Ref, Ex Ref, N/C, Dept, Details, Net, T/C, Vat, Gross` — one file per legal entity.
+`Ref` is Finny's own sequential posting reference (the sheet's `Inv27xxx` series; starting number
+configurable in Settings, stamped onto each invoice at export), `Ex Ref` carries the PO, `Dept`
+comes from the invoice's project (each project holds its Sage department number), the supplier's
+invoice number is composed into `Details` (`Inv4590 - Vendor (CODE/PO 8749)`), and zero-VAT lines
+post with the 0% tax code (T9 by default). Nominal codes (per category), tax codes, fallback
+dept, and the next Ref number are all editable in Settings — validate one small batch against the
+live Sage install before relying on it. Supplier account refs are suggested from the vendor name
+and editable per invoice; Finny reuses the last-used ref per vendor.
 
 ## Design decisions worth knowing
 
@@ -168,6 +172,11 @@ the vendor name and editable per invoice; Finny reuses the last-used ref per ven
   approval (the spec's materiality question) — both configurable per type in Settings.
 - **Sage export pool = confirmed invoices**, regardless of approval state (matches the spec's
   parallel fan-out); the picker shows approval status so the team can hold anything back.
+- **Multi-entity billing:** extraction reads which legal entity the invoice is addressed to
+  (matched against the list in Settings — required at confirm), and generating an export
+  **splits batches per entity** since each entity is its own Sage company dataset. Projects are
+  read from the document when referenced, assignable at review when not, and drive the Sage
+  Dept column via each project's department number.
 - **Rejected invoices are terminal** in v1; the audit trail records who rejected and why.
 - **Alerts don't auto-resolve** — a retried-and-fixed invoice leaves its alert open until a human
   resolves it, on the principle that the alert list is a to-do list, not a status mirror.

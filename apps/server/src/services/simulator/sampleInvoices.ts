@@ -93,6 +93,19 @@ export const VENDOR_TEMPLATES: VendorTemplate[] = [
 
 export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt';
 
+// Kept aligned with the seeded settings (entities / projects) so the mock
+// extractor's list-matching has realistic work to do.
+const BILLED_ENTITIES = [
+  'Meadowvale Developments Ltd',
+  'Meadowvale Construction Ltd',
+  'Meadowvale Asset Management Ltd',
+];
+const PROJECT_REFS: [string, string][] = [
+  ['Clongriffin Phase 3', 'CLON3'],
+  ['Dock Mill', 'DOCKM'],
+  ['Santry Cross', 'SANTX'],
+];
+
 export interface GeneratedInvoice {
   buffer: Buffer;
   filename: string;
@@ -166,16 +179,27 @@ export async function generateSampleInvoice(opts: {
         ? { invoice: 'Our Ref', date: 'Invoice Date', po: 'Your Order Ref', total: 'Balance Due' }
         : { invoice: 'Invoice No', date: 'Invoice Date', po: 'PO Number', total: 'Total Due (incl. VAT)' };
 
+  const entity = BILLED_ENTITIES[Math.floor(rng() * BILLED_ENTITIES.length)];
+  const projectRef = PROJECT_REFS[Math.floor(rng() * PROJECT_REFS.length)];
+  const hasProject = rng() < 0.65; // some invoices (overheads etc.) reference no project
+
   doc.fontSize(18).text(vendor.name);
   doc.fontSize(9).fillColor('#555').text(vendor.address);
   doc.text(`VAT Reg No: ${vendor.vatNumber}`);
   doc.moveDown(1.2);
   doc.fillColor('#000').fontSize(11);
-  doc.text('Bill To:  Meadowvale Developments, Clongriffin, Dublin 13');
+  doc.text(`Bill To:  ${entity}, Clongriffin, Dublin 13`);
   doc.moveDown(0.8);
   if (scenario !== 'no_ref') doc.text(`${labels.invoice}: ${ref}`);
   doc.text(`${labels.date}: ${dateText}`);
   if (hasPo) doc.text(`${labels.po}: ${po}`);
+  if (hasProject) {
+    doc.text(
+      vendor.style === 'caps'
+        ? `SITE/JOB: ${projectRef[1]}`
+        : `Project: ${projectRef[0]} (${projectRef[1]})`,
+    );
+  }
   doc.moveDown(1);
 
   doc.fontSize(10).fillColor('#333');
