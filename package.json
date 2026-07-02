@@ -1,0 +1,26 @@
+{
+  "name": "finny",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Finny — Finance Invoice Notification & Navigation for You (Meadowvale AP automation)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"npm run dev -w apps/server\" \"npm run dev -w apps/web\"",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run typecheck && npm run build -w apps/web",
+    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/web",
+    "test": "npm run test -w apps/server",
+    "demo": "npm run demo -w apps/server",
+    "start": "npm run start -w apps/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

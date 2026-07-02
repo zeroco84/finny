@@ -1,0 +1,145 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { InvoiceSummary, SageBatch } from '@finny/shared';
+import { api } from '../api';
+import { dateTime, euros, shortDate } from '../format';
+import { useMeta } from '../meta';
+import { Banner, EmptyState, StatusChip } from '../components/ui';
+
+export default function ExportsPage() {
+  const { refreshOverview } = useMeta();
+  const [pool, setPool] = useState<InvoiceSummary[] | null>(null);
+  const [batches, setBatches] = useState<SageBatch[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const [p, b] = await Promise.all([api.exportPool(), api.batches()]);
+    setPool(p);
+    setBatches(b);
+    setSelected(new Set(p.map((i) => i.id)));
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function generate() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.generateBatch([...selected]);
+      await load();
+      await refreshOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (pool === null) return <div className="page-loading">Loading exports…</div>;
+
+  const total = pool.filter((i) => selected.has(i.id)).reduce((s, i) => s + (i.gross_cents ?? 0), 0);
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1>Sage 50 export</h1>
+      </div>
+      <p className="muted">
+        Confirmed invoices batch into a Sage 50 audit-trail import file (type PI). Generate a batch, download
+        the CSV, import it in Sage, then mark the batch imported. Every step is recorded on the invoice's history.
+      </p>
+      {error && <Banner kind="error">{error}</Banner>}
+
+      <div className="card">
+        <h2>Ready to export ({pool.length})</h2>
+        {pool.length === 0 ? (
+          <EmptyState title="No confirmed invoices waiting" hint="Confirm invoices in the queue (live mode) and they appear here." />
+        ) : (
+          <>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th />
+                  <th>Vendor</th><th>Ref</th><th>Date</th><th className="num">Gross</th><th>Approval</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pool.map((inv) => (
+                  <tr key={inv.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(inv.id)}
+                        onChange={(e) => {
+                          const next = new Set(selected);
+                          e.target.checked ? next.add(inv.id) : next.delete(inv.id);
+                          setSelected(next);
+                        }}
+                      />
+                    </td>
+                    <td><Link to={`/invoices/${inv.id}`}>{inv.vendor_name}</Link></td>
+                    <td>{inv.invoice_ref}</td>
+                    <td>{shortDate(inv.invoice_date)}</td>
+                    <td className="num">{euros(inv.gross_cents)}</td>
+                    <td><StatusChip status={inv.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="export-bar">
+              <span>
+                {selected.size} invoice{selected.size === 1 ? '' : 's'} · {euros(total)}
+              </span>
+              <button className="btn btn-primary" disabled={busy || selected.size === 0} onClick={() => void generate()}>
+                Generate Sage batch
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Batches</h2>
+        {batches.length === 0 ? (
+          <EmptyState title="No batches yet" />
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Created</th><th>File</th><th className="num">Invoices</th><th className="num">Total</th><th>Status</th><th /></tr>
+            </thead>
+            <tbody>
+              {batches.map((b) => (
+                <tr key={b.id}>
+                  <td>{dateTime(b.created_at)} <small className="muted">by {b.created_by}</small></td>
+                  <td><a href={`/api/exports/${b.id}/download`}>{b.filename}</a></td>
+                  <td className="num">{b.invoice_count}</td>
+                  <td className="num">{euros(b.total_gross_cents)}</td>
+                  <td>
+                    {b.status === 'marked_imported'
+                      ? <span className="chip status-approved">imported {dateTime(b.marked_imported_at)}</span>
+                      : <span className="chip status-confirmed">generated</span>}
+                  </td>
+                  <td className="row-actions">
+                    <a className="btn btn-small" href={`/api/exports/${b.id}/download`}>Download</a>
+                    {b.status === 'generated' && (
+                      <button
+                        className="btn btn-small btn-primary"
+                        onClick={() => void api.markImported(b.id).then(load)}
+                      >
+                        Mark imported
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,52 @@
+import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config, ensureDataDirs } from './config.js';
+import { openDb } from './db/db.js';
+import { seedDefaults } from './services/settings.js';
+import { buildRouter } from './api/routes.js';
+import { startWorkers } from './workers.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+export function createApp(): express.Express {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use('/api', buildRouter());
+
+  // Serve the built web app when present (single-process deploy: build
+  // apps/web, then run the server — handy for Render).
+  const webDist = path.resolve(here, '../../web/dist');
+  if (fs.existsSync(path.join(webDist, 'index.html'))) {
+    app.use(express.static(webDist));
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[api] unhandled error:', err);
+    res.status(500).json({ error: 'Internal error — check the server log' });
+  });
+  return app;
+}
+
+export function boot(): void {
+  ensureDataDirs();
+  openDb(config.dbPath);
+  seedDefaults();
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  boot();
+  const app = createApp();
+  app.listen(config.port, () => {
+    console.log(`[finny] API on http://localhost:${config.port} · data in ${config.dataDir}`);
+    console.log(`[finny] providers — mail:${config.mailProvider} extraction:${config.extractionProvider} approvals:${config.approvalsProvider}`);
+    startWorkers();
+  });
+}
