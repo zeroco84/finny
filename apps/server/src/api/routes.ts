@@ -10,7 +10,14 @@ import {
   requireAuth,
   requireLead,
 } from './auth.js';
-import { countByTab, getInvoiceRow, listInvoices, toDetail } from '../services/invoices.js';
+import {
+  countByTab,
+  getInvoiceRow,
+  listApprovedForBlockDocs,
+  listInvoices,
+  toDetail,
+} from '../services/invoices.js';
+import { requireBlockDocsToken } from './integrationAuth.js';
 import { ReviewError, retryApproval, submitReview } from '../services/review.js';
 import { resetForRetry } from '../services/extraction/pipeline.js';
 import { drainExtractionQueue } from '../workers.js';
@@ -111,6 +118,16 @@ export function buildRouter(): Router {
     res.setHeader('Content-Type', String(row.attachment_mime ?? 'application/octet-stream'));
     res.setHeader('Content-Disposition', `inline; filename="${String(row.attachment_name ?? 'invoice')}"`);
     res.sendFile(String(row.attachment_path));
+  });
+
+  // ── BlockDocs pull endpoint (bearer token, no session) ────────────────────
+  // Machine-to-machine: BlockDocs polls approved, project-tagged invoices for
+  // its budget-vs-invoiced dashboard. Returns approved_at — Finny stops at
+  // approval (Sage handles payment), so there is deliberately no paid date.
+  router.get('/integrations/blockdocs/invoices', requireBlockDocsToken, (req, res) => {
+    const projectCode = typeof req.query.project_code === 'string' ? req.query.project_code : undefined;
+    const since = typeof req.query.since === 'string' ? req.query.since : undefined;
+    res.json(listApprovedForBlockDocs(projectCode, since));
   });
 
   // Everything below requires a session.

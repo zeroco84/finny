@@ -50,6 +50,9 @@ export const config = {
     from: env('SMTP_FROM', 'finny-alerts@example.com'),
   },
 
+  // Bearer token for the BlockDocs cost-dashboard pull endpoint; empty = disabled.
+  blockdocsToken: env('FINNY_BLOCKDOCS_TOKEN'),
+
   authProvider: env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra',
   sessionSecret: '',
 };

@@ -9,7 +9,7 @@ import type {
 } from '@finny/shared';
 import { REQUIRED_FIELDS } from '@finny/shared';
 import { all, jsonParse, one, run } from '../db/db.js';
-import { newId, nowIso } from '../domain/util.js';
+import { centsToDecimal, newId, nowIso } from '../domain/util.js';
 import { auditForInvoice } from './audit.js';
 
 export type InvoiceRow = Record<string, unknown>;
@@ -205,6 +205,64 @@ export function countByTab(): Record<string, number> {
     out[tab] = row ? Number(row.n) : 0;
   }
   return out;
+}
+
+/**
+ * Export shape for BlockDocs' budget-vs-invoiced dashboard. Deliberately
+ * carries `approved_at`, NOT a payment date: Finny's workflow stops at
+ * approval and hands off to Sage 50 — it has no visibility into payment.
+ */
+export interface BlockDocsInvoiceExport {
+  finny_invoice_id: string;
+  project_code: string | null;
+  category: string | null;
+  vendor_name: string | null;
+  invoice_ref: string | null;
+  invoice_date: string | null;
+  amount: string; // decimal string, e.g. "1234.56"
+  currency: string;
+  approved_at: string | null;
+}
+
+/**
+ * Approved, project-tagged invoices for the BlockDocs pull endpoint. The
+ * approval timestamp comes from approval_requests.decided_at (not
+ * invoices.updated_at, which moves on any edit).
+ */
+export function listApprovedForBlockDocs(
+  projectCode?: string,
+  since?: string,
+): BlockDocsInvoiceExport[] {
+  const conditions = [`i.status = 'approved'`, `i.project_code IS NOT NULL`];
+  const params: string[] = [];
+  if (projectCode) {
+    conditions.push('i.project_code = ?');
+    params.push(projectCode);
+  }
+  if (since) {
+    conditions.push('ar.decided_at >= ?');
+    params.push(since);
+  }
+  const rows = all(
+    `SELECT i.*, ar.decided_at AS approved_at
+     FROM invoices i
+     LEFT JOIN approval_requests ar
+       ON ar.invoice_id = i.id AND ar.status = 'approved'
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY ar.decided_at DESC`,
+    ...params,
+  );
+  return rows.map((r) => ({
+    finny_invoice_id: String(r.id),
+    project_code: str(r.project_code),
+    category: str(r.category),
+    vendor_name: str(r.vendor_name),
+    invoice_ref: str(r.invoice_ref),
+    invoice_date: str(r.invoice_date),
+    amount: centsToDecimal(num(r.gross_cents)),
+    currency: String(r.currency ?? 'EUR'),
+    approved_at: str(r.approved_at),
+  }));
 }
 
 /** Duplicate check: same normalized vendor + invoice ref, different invoice. */

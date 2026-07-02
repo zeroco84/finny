@@ -192,6 +192,16 @@ and editable per invoice; Finny reuses the last-used ref per vendor.
 - **Phase 3 (partially built):** dashboard and duplicate detection are in; bulk confirm, PO
   matching and the trusted-vendor fast lane are the natural next increments.
 
+### BlockDocs cost-dashboard export
+
+`GET /api/integrations/blockdocs/invoices` is a machine-to-machine pull endpoint returning
+**approved, project-tagged** invoices for BlockDocs' budget-vs-invoiced dashboard. Auth is a
+static bearer token (`FINNY_BLOCKDOCS_TOKEN`; unset = 503, wrong = 401), with optional
+`?project_code=` and `?since=` (ISO timestamp, inclusive, against the approval time) filters.
+The response carries `approved_at` — deliberately **not** a payment date: Finny stops at
+approval and hands off to Sage, so BlockDocs must not treat "approved" as "paid". Invoices
+without a project are excluded by design (the dashboard matches on `project_code`).
+
 ## Deploying a shareable demo (Render)
 
 The repo ships a [render.yaml](render.yaml) blueprint: Render dashboard → **New → Blueprint** →
