@@ -1,0 +1,25 @@
+{
+  "projectId": "5164ac3f-1469-4d49-8eb0-12f2a27ed82c",
+  "shape": "package",
+  "readmeHeader": ".design-sync/conventions.md",
+  "pkg": "@finny/web",
+  "srcDir": "src/components",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "src/styles.css",
+  "extraFonts": ["src/fonts/nunito-sans.css"],
+  "overrides": {
+    "BarRow": { "cardMode": "column" },
+    "EmptyState": { "cardMode": "column" },
+    "TrendLine": { "cardMode": "column" }
+  },
+  "componentSrcMap": {
+    "StatusChip": "src/components/ui.tsx",
+    "ConfidenceBadge": "src/components/ui.tsx",
+    "Banner": "src/components/ui.tsx",
+    "EmptyState": "src/components/ui.tsx",
+    "BarRow": "src/components/ui.tsx",
+    "TrendLine": "src/components/ui.tsx",
+    "MetaProvider": null,
+    "App": null
+  }
+}
