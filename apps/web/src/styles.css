@@ -1,4 +1,5 @@
 /* ── Finny design tokens ──────────────────────────────────────────────── */
+/* Body font is Nunito Sans (OFL) — @font-face ships from src/fonts/, imported in main.tsx. */
 :root {
   --bg: #f7f5f0;
   --surface: #ffffff;
@@ -18,7 +19,7 @@
   --warn-soft: #f9efd8;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(29, 39, 33, 0.08), 0 4px 14px rgba(29, 39, 33, 0.05);
-  font-family: 'Avenir Next', 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+  font-family: 'Nunito Sans', 'Segoe UI', system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
