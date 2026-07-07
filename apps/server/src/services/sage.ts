@@ -7,6 +7,16 @@ import { centsToDecimal, newId, nowIso, toSageDate } from '../domain/util.js';
 import { audit } from './audit.js';
 import { raiseAlert } from './alerts.js';
 import { getSettings, updateSettings } from './settings.js';
+import {
+  buildPurchaseInvoicePayload,
+  findDuplicateInSage,
+  findMaxPostingNumber,
+  findPurchaseTxByRef,
+  isOwnPosting,
+  postPurchaseInvoice,
+  resolveSageServer,
+  type SageServer,
+} from './sage/hyperaccounts.js';
 
 /**
  * Batch-posting CSV matching the AP team's working sheet ("Invoices to be
@@ -94,6 +104,24 @@ export function buildSageCsv(lines: SageLineInput[], settings: Settings): string
   return rows.join('\r\n') + '\r\n';
 }
 
+/** Shared row -> line mapping for the CSV builder and the API payload. */
+export function lineFromRow(r: Record<string, unknown>, postingRef: string): SageLineInput {
+  return {
+    supplier_account_ref: String(r.supplier_account_ref ?? ''),
+    category: String(r.category ?? ''),
+    invoice_date: r.invoice_date === null ? null : String(r.invoice_date),
+    invoice_ref: String(r.invoice_ref ?? ''),
+    posting_ref: postingRef,
+    vendor_name: String(r.vendor_name ?? ''),
+    net_cents: r.net_cents === null ? null : Number(r.net_cents),
+    vat_cents: r.vat_cents === null ? null : Number(r.vat_cents),
+    gross_cents: Number(r.gross_cents ?? 0),
+    vat_rate: r.vat_rate === null ? null : Number(r.vat_rate),
+    po_number: r.po_number === null || r.po_number === undefined ? null : String(r.po_number),
+    project_code: r.project_code === null || r.project_code === undefined ? null : String(r.project_code),
+  };
+}
+
 /** Confirmed invoices not yet in a batch — the export pool. */
 export function exportPool(): Record<string, unknown>[] {
   return all(
@@ -132,20 +160,7 @@ export async function generateBatches(invoiceIds: string[], who: string): Promis
     for (const [entity, group] of byEntity) {
       const lines: SageLineInput[] = group.map((r) => {
         const existing = r.posting_ref === null || r.posting_ref === undefined ? null : String(r.posting_ref);
-        return {
-          supplier_account_ref: String(r.supplier_account_ref ?? ''),
-          category: String(r.category ?? ''),
-          invoice_date: r.invoice_date === null ? null : String(r.invoice_date),
-          invoice_ref: String(r.invoice_ref ?? ''),
-          posting_ref: existing ?? `Inv${nextRef++}`,
-          vendor_name: String(r.vendor_name ?? ''),
-          net_cents: r.net_cents === null ? null : Number(r.net_cents),
-          vat_cents: r.vat_cents === null ? null : Number(r.vat_cents),
-          gross_cents: Number(r.gross_cents ?? 0),
-          vat_rate: r.vat_rate === null ? null : Number(r.vat_rate),
-          po_number: r.po_number === null ? null : String(r.po_number),
-          project_code: r.project_code === null || r.project_code === undefined ? null : String(r.project_code),
-        };
+        return lineFromRow(r, existing ?? `Inv${nextRef++}`);
       });
       const csv = buildSageCsv(lines, settings);
 
@@ -186,6 +201,10 @@ export async function generateBatches(invoiceIds: string[], who: string): Promis
 }
 
 function mapBatch(r: Record<string, unknown>): SageBatch {
+  const posted = one<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM invoices WHERE sage_batch_id = ? AND sage_tx_number IS NOT NULL`,
+    String(r.id),
+  );
   return {
     id: String(r.id),
     created_by: String(r.created_by),
@@ -195,9 +214,217 @@ function mapBatch(r: Record<string, unknown>): SageBatch {
     invoice_count: Number(r.invoice_count),
     total_gross_cents: Number(r.total_gross_cents),
     status: r.status as SageBatch['status'],
+    posted_count: posted ? Number(posted.n) : 0,
     marked_imported_by: r.marked_imported_by === null ? null : String(r.marked_imported_by),
     marked_imported_at: r.marked_imported_at === null ? null : String(r.marked_imported_at),
   };
+}
+
+/** Distinct HyperAccounts servers (by URL) behind a set of entities. */
+function serversForEntities(entities: (string | null)[]): SageServer[] {
+  const seen = new Map<string, SageServer>();
+  for (const entity of entities) {
+    const server = resolveSageServer(entity);
+    if (server && !seen.has(server.url)) seen.set(server.url, server);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Sequencing pre-check, run BEFORE posting refs are assigned: read every
+ * relevant Sage company for the highest existing Inv-series PI reference. If
+ * anyone has posted at or past Finny's counter (manual posting still happens
+ * during transition), fast-forward the counter so the new batch can't collide.
+ * Read-only against Sage; unreachable servers are skipped here because the
+ * send step will surface connectivity properly.
+ */
+export async function syncPostingSequence(
+  invoiceIds: string[],
+  who: string,
+): Promise<{ checked: number; adjusted: boolean; from?: number; to?: number }> {
+  if (config.sage.provider !== 'hyperaccounts') return { checked: 0, adjusted: false };
+  const wanted = new Set(invoiceIds);
+  const entities = exportPool()
+    .filter((r) => wanted.has(String(r.id)))
+    .map((r) => (r.entity === null || r.entity === undefined ? null : String(r.entity)));
+  const servers = serversForEntities(entities);
+
+  let sageMax: number | null = null;
+  let checked = 0;
+  for (const server of servers) {
+    try {
+      const max = await findMaxPostingNumber(server);
+      checked++;
+      if (max !== null && (sageMax === null || max > sageMax)) sageMax = max;
+    } catch (err) {
+      console.warn(`[sage] sequence pre-check skipped for ${server.entity}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  const settings = getSettings();
+  if (sageMax === null || sageMax < settings.next_posting_ref) {
+    return { checked, adjusted: false };
+  }
+  const from = settings.next_posting_ref;
+  const to = sageMax + 1;
+  updateSettings({ next_posting_ref: to });
+  audit(null, 'posting_sequence_adjusted', who, { from, to, sage_max_ref: `Inv${sageMax}` });
+  await raiseAlert('sage_sequence_adjusted', {
+    error: `Sage already holds references up to Inv${sageMax}`,
+    extra: `Inv${from} → Inv${to}`,
+  });
+  return { checked, adjusted: true, from, to };
+}
+
+/**
+ * A fresh posting ref that is safe against BOTH Finny's counter and what is
+ * already in this Sage company — used when a manual post is found squatting
+ * on a ref Finny had assigned.
+ */
+async function nextSafePostingRef(server: SageServer): Promise<string> {
+  const sageMax = await findMaxPostingNumber(server).catch(() => null);
+  const settings = getSettings();
+  const n = Math.max(settings.next_posting_ref, (sageMax ?? 0) + 1);
+  updateSettings({ next_posting_ref: n + 1 });
+  return `Inv${n}`;
+}
+
+/**
+ * One-touch "Send to Sage" (SAGE_PROVIDER=hyperaccounts): post every not-yet-
+ * posted invoice in a batch to the entity's HyperAccounts server. Finny reads
+ * Sage before every write:
+ *
+ *   1. Own ref already in Sage + same supplier & gross -> a previous send
+ *      crashed after posting; adopt the transaction, never post twice.
+ *      Same ref but a DIFFERENT supplier/amount -> a manual post took the
+ *      ref; reassign a fresh safe ref and carry on.
+ *   2. Same supplier account + supplier invoice number in Details + same
+ *      gross under another ref -> someone already posted this invoice by
+ *      hand; link to that transaction instead of posting, and alert the
+ *      team to verify.
+ *   3. Otherwise post, and store the returned transaction number.
+ *
+ * Partial failure leaves the batch 'generated' with an alert; retrying sends
+ * only what's still missing.
+ */
+export async function sendBatchToSage(
+  batchId: string,
+  who: string,
+): Promise<{
+  posted: number;
+  adopted: number;
+  duplicates: number;
+  reassigned: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}> {
+  if (config.sage.provider !== 'hyperaccounts') {
+    throw new Error('SAGE_PROVIDER is not hyperaccounts — one-touch posting is disabled');
+  }
+  const batch = getBatch(batchId);
+  if (!batch) throw new Error('Batch not found');
+  const server = resolveSageServer(batch.entity);
+  if (!server) {
+    const message = `No HyperAccounts server configured for entity "${batch.entity ?? 'unassigned'}" — set SAGE_API_URL or SAGE_ENTITY_SERVERS`;
+    await raiseAlert('sage_export_failure', { error: message });
+    throw new Error(message);
+  }
+
+  const settings = getSettings();
+  const rows = all(`SELECT * FROM invoices WHERE sage_batch_id = ? ORDER BY confirmed_at ASC`, batchId);
+  const summary = {
+    posted: 0, adopted: 0, duplicates: 0, reassigned: 0, skipped: 0, failed: 0,
+    errors: [] as string[],
+  };
+
+  const store = (invoiceId: string, txNumber: number) => {
+    run(
+      `UPDATE invoices SET sage_tx_number = ?, sage_posted_at = ?, updated_at = ? WHERE id = ?`,
+      String(txNumber), nowIso(), nowIso(), invoiceId,
+    );
+  };
+
+  for (const r of rows) {
+    const invoiceId = String(r.id);
+    if (r.sage_tx_number !== null && r.sage_tx_number !== undefined) {
+      summary.skipped++;
+      continue;
+    }
+    try {
+      const line = lineFromRow(r, String(r.posting_ref ?? ''));
+
+      // Pre-check 1: is our ref already in Sage?
+      const onRef = line.posting_ref ? await findPurchaseTxByRef(server, line.posting_ref) : [];
+      const own = onRef.find((h) => isOwnPosting(h, line.supplier_account_ref, line.gross_cents));
+      if (own) {
+        store(invoiceId, own.tranNumber);
+        audit(invoiceId, 'posted_to_sage', who, {
+          tx_number: own.tranNumber, entity: batch.entity, batch_id: batchId,
+          adopted_existing: true,
+        });
+        summary.adopted++;
+        continue;
+      }
+      if (onRef.length > 0) {
+        // A manual post is squatting on our ref — burn it, take a fresh one.
+        const freshRef = await nextSafePostingRef(server);
+        run(`UPDATE invoices SET posting_ref = ?, updated_at = ? WHERE id = ?`, freshRef, nowIso(), invoiceId);
+        audit(invoiceId, 'posting_ref_reassigned', who, {
+          from: line.posting_ref, to: freshRef,
+          reason: `Sage tx ${onRef[0].tranNumber} (${onRef[0].accountRef}) already uses ${line.posting_ref}`,
+        });
+        line.posting_ref = freshRef;
+        summary.reassigned++;
+      }
+
+      // Pre-check 2: did someone already post this supplier invoice by hand?
+      const duplicate = await findDuplicateInSage(
+        server, line.supplier_account_ref, line.invoice_ref, line.gross_cents, line.posting_ref,
+      );
+      if (duplicate) {
+        store(invoiceId, duplicate.tranNumber);
+        audit(invoiceId, 'linked_to_existing_sage_tx', who, {
+          tx_number: duplicate.tranNumber, sage_ref: duplicate.invRef,
+          entity: batch.entity, batch_id: batchId,
+        });
+        await raiseAlert('sage_duplicate_detected', {
+          invoiceId,
+          vendor: line.vendor_name,
+          invoiceRef: line.invoice_ref,
+          error: `Sage transaction ${duplicate.tranNumber} (ref ${duplicate.invRef}) on account ${line.supplier_account_ref} already has this invoice number and amount`,
+        });
+        summary.duplicates++;
+        continue;
+      }
+
+      // Clear to post.
+      const txNumber = await postPurchaseInvoice(server, buildPurchaseInvoicePayload(invoiceId, line, settings));
+      store(invoiceId, txNumber);
+      audit(invoiceId, 'posted_to_sage', who, {
+        tx_number: txNumber, entity: batch.entity, batch_id: batchId,
+        ...(line.posting_ref !== String(r.posting_ref ?? '') ? { posting_ref: line.posting_ref } : {}),
+      });
+      summary.posted++;
+    } catch (err) {
+      summary.failed++;
+      summary.errors.push(`${String(r.invoice_ref ?? invoiceId)}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  if (summary.failed === 0 && batch.status === 'generated') {
+    run(`UPDATE sage_batches SET status = 'posted' WHERE id = ?`, batchId);
+    audit(null, 'sage_batch_posted', who, {
+      batch_id: batchId, entity: batch.entity,
+      posted: summary.posted, adopted: summary.adopted, duplicates: summary.duplicates,
+      reassigned: summary.reassigned, skipped: summary.skipped,
+    });
+  } else if (summary.failed > 0) {
+    await raiseAlert('sage_export_failure', {
+      error: `Send to Sage: ${summary.failed}/${rows.length} invoice(s) failed for ${batch.entity ?? 'unassigned'} — ${summary.errors[0]}`,
+    });
+  }
+  return summary;
 }
 
 export function listBatches(): SageBatch[] {

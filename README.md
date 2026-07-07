@@ -147,6 +147,39 @@ Dev sign-in is a signed session cookie issued by `/api/auth/dev-login`. For prod
 JWKS) and map an AD group to the `lead` role; the whole app consumes only `req.user`
 (`{email, name, role}`), and the web app's login page gets replaced by the MSAL redirect.
 
+### One-touch "Send to Sage" (HyperAccounts API)
+
+With `SAGE_PROVIDER=hyperaccounts`, generating a batch **posts each invoice straight into Sage 50**
+through the on-prem HyperAccounts REST API (Hyperext) — `POST /api/purchaseInvoice` per invoice,
+with the nominal/tax-code/department mappings from Settings, the sequential posting ref as the
+transaction reference, and a long-lived tokenized link to the invoice document on every
+transaction (the API requires one; Sage keeps it). The CSV is still written as the audit copy.
+
+- **Per-entity servers:** each legal entity is its own Sage company dataset, so configure
+  `SAGE_ENTITY_SERVERS` (JSON map of entity → `{url, key}`) with `SAGE_API_URL`/`SAGE_API_KEY`
+  as the fallback for everything else. An entity with no server keeps the manual CSV flow.
+- **Finny reads Sage before it writes** (all via `POST /api/search/auditHeaders`):
+  1. *Sequence sync* — before assigning refs, it looks up the highest existing `Inv…` PI
+     reference across the relevant Sage companies and fast-forwards its counter past anything
+     posted by hand, so refs can't collide. The jump is audited and raises a
+     `sage_sequence_adjusted` warning (parallel manual posting is worth knowing about).
+  2. *Duplicate detection* — before posting each invoice, it searches for the same supplier
+     account + the supplier's invoice number in the Details + the same gross. A hit means someone
+     already keyed it manually: Finny **links the invoice to that transaction instead of posting
+     again** and raises a `sage_duplicate_detected` warning asking the team to verify.
+  3. *Ref-collision guard* — crash recovery only adopts a transaction on Finny's own ref when the
+     supplier account and gross also match; if a manual post merely took the ref, Finny reassigns
+     a fresh safe one (audited as `posting_ref_reassigned`) and posts under that.
+- **Idempotent retries:** invoices with a stored Sage transaction number are never re-sent, and
+  anything posted by a previous crashed attempt is adopted instead of posted twice. Failures
+  alert and leave a per-batch "Send to Sage" retry that sends only what's missing.
+  (The CSV audit copy keeps the refs as first generated; the invoice history is authoritative
+  when a ref was reassigned.)
+- **Confirm with Hyperext before go-live:** the API-key **header name** (docs say "API Key,
+  collection-level" without naming it — `SAGE_API_KEY_HEADER` defaults to `x-api-key`), and that
+  the tokenized document links (served by Finny at `APP_URL`) are reachable from wherever Sage
+  users click them.
+
 ### Sage 50 posting format — matches the AP team's sheet
 
 The export mirrors the team's "Invoices to be posted" workbook column-for-column:

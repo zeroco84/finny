@@ -37,7 +37,10 @@ import {
   getBatch,
   listBatches,
   markImported,
+  sendBatchToSage,
+  syncPostingSequence,
 } from '../services/sage.js';
+import { configuredSageEntities } from '../services/sage/hyperaccounts.js';
 import { dashboardMetrics } from '../services/metrics.js';
 import { getApprover, getSettings, listApprovers, updateSettings } from '../services/settings.js';
 import { all, one, run } from '../db/db.js';
@@ -160,6 +163,8 @@ export function buildRouter(): Router {
       approvals_provider: config.approvalsProvider,
       email_provider: emailProviderName(),
       auth_provider: config.authProvider,
+      sage_provider: config.sage.provider,
+      sage_entities: config.sage.provider === 'hyperaccounts' ? configuredSageEntities() : [],
       mail_last_poll: getStatus('mail_last_poll'),
       mail_last_error: getStatus('mail_last_error'),
       approvals_last_poll: getStatus('approvals_last_poll'),
@@ -378,9 +383,33 @@ export function buildRouter(): Router {
       return;
     }
     try {
-      res.json(await generateBatches(ids.data, req.user!.email));
+      // Read Sage first: fast-forward the posting-ref counter past anything
+      // posted outside Finny, so the refs assigned below cannot collide.
+      await syncPostingSequence(ids.data, req.user!.email);
+      const batches = await generateBatches(ids.data, req.user!.email);
+      // One-touch mode: posting straight into Sage is part of the same click.
+      // A send failure never fails the request — the batch stays 'generated'
+      // with an alert, and the UI offers "Send to Sage" as a retry.
+      if (config.sage.provider === 'hyperaccounts') {
+        for (const batch of batches) {
+          await sendBatchToSage(batch.id, req.user!.email).catch((err) =>
+            console.error(`[sage] send failed for batch ${batch.id}:`, err),
+          );
+        }
+      }
+      res.json(batches.map((b) => getBatch(b.id)));
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Export failed' });
+    }
+  });
+
+  // Retry/one-touch send for a batch that didn't fully post.
+  router.post('/exports/:id/send', async (req, res) => {
+    try {
+      const summary = await sendBatchToSage(paramId(req), req.user!.email);
+      res.json({ batch: getBatch(paramId(req)), summary });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Send failed' });
     }
   });
   router.get('/exports/:id/download', (req, res) => {

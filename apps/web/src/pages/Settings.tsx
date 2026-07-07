@@ -346,6 +346,15 @@ export default function SettingsPage() {
                 <td><code>{status.approvals_provider}</code></td>
                 <td className="muted">{status.approvals_provider === 'mock' ? 'simulator panel on the invoice page' : status.approvals_last_error ?? (status.approvals_last_poll ? `last poll ${dateTime(status.approvals_last_poll)}` : '')}</td>
               </tr>
+              <tr>
+                <td>Sage output</td>
+                <td><code>{status.sage_provider}</code></td>
+                <td className="muted">
+                  {status.sage_provider === 'hyperaccounts'
+                    ? `one-touch posting via HyperAccounts — servers: ${status.sage_entities.map((e) => (e === '*' ? 'default (all entities)' : e)).join(', ') || 'NONE CONFIGURED'}`
+                    : 'CSV batch files imported by hand — set SAGE_PROVIDER=hyperaccounts for one-touch posting'}
+                </td>
+              </tr>
               <tr><td>Alert email</td><td><code>{status.email_provider}</code></td>
                 <td className="muted">{status.email_provider === 'log' ? 'SMTP not configured — alerts stored & shown in the UI' : 'sending via SMTP'}</td></tr>
               <tr><td>Sign-in</td><td><code>{status.auth_provider}</code></td>

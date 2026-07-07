@@ -71,6 +71,27 @@ const TEMPLATES: Record<AlertType, Template> = {
       invoiceLink(ctx),
     nextStep: 'Check disk space and the category→nominal-code mapping in Settings, then retry the export.',
   },
+  sage_duplicate_detected: {
+    severity: 'warning',
+    subject: (ctx) => `[Finny] Invoice ${invoiceLabel(ctx)} was already in Sage — not posted again`,
+    body: (ctx) =>
+      `Before posting, Finny found what looks like the same invoice already in Sage ` +
+      `(${ctx.error ?? 'matching supplier, invoice number and amount'}) — most likely posted manually.\n\n` +
+      `Finny did NOT post it again; it linked the invoice to the existing Sage transaction instead.` +
+      invoiceLink(ctx),
+    nextStep:
+      'Open the transaction in Sage and confirm it is the same invoice. If it is genuinely different, correct the supplier invoice number in Finny and use "Send to Sage" again.',
+  },
+  sage_sequence_adjusted: {
+    severity: 'warning',
+    subject: (ctx) => `[Finny] Posting ref sequence moved forward (${ctx.extra ?? ''})`,
+    body: (ctx) =>
+      `Sage already contains posting references at or beyond the number Finny was about to use ` +
+      `(${ctx.error ?? 'posted outside Finny'}).\n\n` +
+      `To avoid a collision, Finny fast-forwarded its counter (${ctx.extra ?? ''}). No invoices were skipped or lost — the numbering simply jumped.`,
+    nextStep:
+      'If the team is still posting into Sage by hand, agree who owns the Inv-number sequence — parallel posting keeps causing jumps like this.',
+  },
   teams_api_failure: {
     severity: 'critical',
     subject: (ctx) => `[Finny] Teams approval could not be created for ${invoiceLabel(ctx)}`,

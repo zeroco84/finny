@@ -25,6 +25,8 @@ function migrate(database: DatabaseSync): void {
   ensureColumn('invoices', 'entity', 'TEXT');
   ensureColumn('invoices', 'project_code', 'TEXT');
   ensureColumn('invoices', 'posting_ref', 'TEXT');
+  ensureColumn('invoices', 'sage_tx_number', 'TEXT');
+  ensureColumn('invoices', 'sage_posted_at', 'TEXT');
   ensureColumn('sage_batches', 'entity', 'TEXT');
 }
 

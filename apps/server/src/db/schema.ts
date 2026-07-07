@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS invoices (
   confirmed_at TEXT,
   discarded_reason TEXT,
   sage_batch_id TEXT,
+  posting_ref TEXT,
+  sage_tx_number TEXT,
+  sage_posted_at TEXT,
   sla_alerted INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

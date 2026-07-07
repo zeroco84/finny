@@ -199,6 +199,8 @@ export type AlertType =
   | 'extraction_failure'
   | 'low_confidence_sla'
   | 'sage_export_failure'
+  | 'sage_duplicate_detected'
+  | 'sage_sequence_adjusted'
   | 'teams_api_failure'
   | 'mailbox_auth_failure';
 
@@ -229,7 +231,10 @@ export interface SageBatch {
   filename: string;
   invoice_count: number;
   total_gross_cents: number;
-  status: 'generated' | 'marked_imported';
+  /** posted = pushed into Sage via the HyperAccounts API (one-touch mode). */
+  status: 'generated' | 'posted' | 'marked_imported';
+  /** Invoices in this batch already carrying a Sage transaction number. */
+  posted_count: number;
   marked_imported_by: string | null;
   marked_imported_at: string | null;
 }
@@ -257,6 +262,10 @@ export interface ConnectorStatus {
   approvals_provider: string;
   email_provider: string;
   auth_provider: string;
+  /** csv = manual batch import; hyperaccounts = one-touch API posting into Sage 50. */
+  sage_provider: string;
+  /** Entities with a HyperAccounts server configured ('*' = default server for all). */
+  sage_entities: string[];
   mail_last_poll: string | null;
   mail_last_error: string | null;
   approvals_last_poll: string | null;

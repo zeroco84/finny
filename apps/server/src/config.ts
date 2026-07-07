@@ -8,6 +8,17 @@ function env(name: string, fallback = ''): string {
   return v === undefined || v === '' ? fallback : v;
 }
 
+function jsonEnv<T>(name: string, fallback: T): T {
+  const raw = env(name);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    console.error(`[config] ${name} is not valid JSON — ignoring`);
+    return fallback;
+  }
+}
+
 const dataDir = path.resolve(process.cwd(), env('DATA_DIR', './data'));
 
 const anthropicKey = env('ANTHROPIC_API_KEY');
@@ -52,6 +63,22 @@ export const config = {
 
   // Bearer token for the BlockDocs cost-dashboard pull endpoint; empty = disabled.
   blockdocsToken: env('FINNY_BLOCKDOCS_TOKEN'),
+
+  // Sage 50 output: 'csv' = batch files the AP team imports by hand;
+  // 'hyperaccounts' = one-touch posting via the HyperAccounts REST API
+  // (on-prem wrapper around Sage 50 — one server per company dataset).
+  sage: {
+    provider: env('SAGE_PROVIDER', 'csv') as 'csv' | 'hyperaccounts',
+    // Header name carrying the API key. The HyperAccounts docs say "API Key
+    // (collection-level)" without naming the header — confirm with Hyperext;
+    // x-api-key is the Postman default.
+    apiKeyHeader: env('SAGE_API_KEY_HEADER', 'x-api-key'),
+    defaultServer: { url: env('SAGE_API_URL'), key: env('SAGE_API_KEY') },
+    // Per-entity servers (each legal entity = its own Sage company dataset =
+    // its own HyperAccounts server). JSON: {"Entity Name": {"url": "...", "key": "..."}}
+    // Entities not listed fall back to SAGE_API_URL/SAGE_API_KEY.
+    entityServers: jsonEnv<Record<string, { url: string; key: string }>>('SAGE_ENTITY_SERVERS', {}),
+  },
 
   authProvider: env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra',
   sessionSecret: '',

@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import type { ConnectorStatus } from '@finny/shared';
+import { api } from '../api';
 import { useMeta } from '../meta';
 import { pct } from '../format';
 
@@ -56,6 +58,12 @@ export default function GuidePage() {
   const { settings, overview, user } = useMeta();
   const threshold = pct(settings.confidence_threshold);
   const [active, setActive] = useState('loop');
+  const [connector, setConnector] = useState<ConnectorStatus | null>(null);
+  const oneTouchSage = connector?.sage_provider === 'hyperaccounts';
+
+  useEffect(() => {
+    void api.status().then(setConnector).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -258,15 +266,35 @@ export default function GuidePage() {
           <Chapter n={7} id="sage" title="Posting to Sage">
             <ol className="guide-steps">
               <li><strong>Open Sage.</strong> Every confirmed invoice not yet batched is pre-ticked in the pool.</li>
-              <li><strong>Generate.</strong> Finny writes one CSV per legal entity, in the posting-sheet
-                layout (A/C · Date · Ref · Ex Ref · N/C · Dept · Details · Net · T/C · Vat · Gross).</li>
-              <li><strong>Refs are automatic.</strong> Each line gets the next Inv-number in the running
-                sequence, stamped on the invoice's history.</li>
-              <li><strong>Post &amp; mark.</strong> Download each file, post it in the matching Sage company,
-                then press <strong>Mark imported</strong>.</li>
+              {oneTouchSage ? (
+                <>
+                  <li><strong>Press Send to Sage.</strong> Finny posts each invoice straight into the right
+                    entity's Sage company via HyperAccounts, with the invoice document linked on every
+                    transaction. A CSV audit copy is kept alongside.</li>
+                  <li><strong>Refs are automatic.</strong> Each line gets the next Inv-number in the running
+                    sequence; the Sage transaction number lands on the invoice's history.</li>
+                  <li><strong>Finny reads Sage before it writes.</strong> If someone has been posting by hand,
+                    the Inv-sequence jumps past their refs automatically, and if the same supplier invoice is
+                    already in Sage (same account, invoice number and amount) Finny links to that transaction
+                    instead of posting it again — you get an alert asking you to double-check, never a
+                    duplicate in the ledger.</li>
+                  <li><strong>Check the badge.</strong> A batch shows <em>posted to Sage</em> when every invoice
+                    is in; anything that failed keeps a <strong>Send to Sage</strong> retry button and raises an
+                    alert — retries never post the same invoice twice.</li>
+                </>
+              ) : (
+                <>
+                  <li><strong>Generate.</strong> Finny writes one CSV per legal entity, in the posting-sheet
+                    layout (A/C · Date · Ref · Ex Ref · N/C · Dept · Details · Net · T/C · Vat · Gross).</li>
+                  <li><strong>Refs are automatic.</strong> Each line gets the next Inv-number in the running
+                    sequence, stamped on the invoice's history.</li>
+                  <li><strong>Post &amp; mark.</strong> Download each file, post it in the matching Sage company,
+                    then press <strong>Mark imported</strong>.</li>
+                </>
+              )}
             </ol>
             <p className="muted">
-              The batch file is a snapshot — a mistake found later is fixed in Sage as today, and the
+              A mistake found after posting is fixed in Sage as today, and the
               mappings (nominals, tax codes, depts, next Ref) live in Settings (<Lead />).
             </p>
           </Chapter>
