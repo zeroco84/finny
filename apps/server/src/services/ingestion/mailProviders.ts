@@ -71,14 +71,20 @@ interface GraphAttachment {
  */
 export async function pollGraphMailbox(): Promise<void> {
   const mailbox = encodeURIComponent(config.graph.mailbox);
-  const watermark = one<{ value: string }>(
+  let watermark = one<{ value: string }>(
     `SELECT value FROM system_status WHERE key = 'graph_mail_watermark'`,
   )?.value;
+  if (!watermark) {
+    // First ever poll: start from now (minus the optional backfill window)
+    // rather than ingesting the mailbox's entire history — the team has
+    // already processed everything that predates Finny.
+    watermark = new Date(Date.now() - config.graph.backfillDays * 86_400_000).toISOString();
+    setStatus('graph_mail_watermark', watermark);
+    console.log(`[ingest] graph mailbox watermark initialised to ${watermark} (GRAPH_BACKFILL_DAYS=${config.graph.backfillDays})`);
+  }
 
   try {
-    const filter = watermark
-      ? `receivedDateTime gt ${watermark} and hasAttachments eq true`
-      : 'hasAttachments eq true';
+    const filter = `receivedDateTime gt ${watermark} and hasAttachments eq true`;
     const list = await graphFetch<{ value: GraphMessage[] }>(
       `/users/${mailbox}/mailFolders/inbox/messages?$filter=${encodeURIComponent(filter)}` +
         `&$orderby=receivedDateTime asc&$top=25&$select=id,subject,receivedDateTime,from,hasAttachments`,

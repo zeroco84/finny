@@ -44,6 +44,10 @@ export const config = {
     clientSecret: env('GRAPH_CLIENT_SECRET'),
     mailbox: env('GRAPH_MAILBOX', 'apadmin@example.com'),
     markRead: env('GRAPH_MARK_READ', 'true') === 'true',
+    // How many days of existing mailbox history to ingest when the poller
+    // runs for the FIRST time. 0 = only mail arriving after enablement — the
+    // safe default when the team has been processing the mailbox manually.
+    backfillDays: Number(env('GRAPH_BACKFILL_DAYS', '0')),
   },
 
   extractionProvider: extractionProvider as 'anthropic' | 'mock',
