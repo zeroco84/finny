@@ -165,6 +165,25 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     if (duplicateOf) {
       audit(invoiceId, 'duplicate_flagged', 'system', { duplicate_of: duplicateOf });
     }
+
+    // Suppliers routinely send statements and remittance advices to the AP
+    // mailbox. They are not bills: file them automatically (visible under
+    // Completed, full audit trail, reopenable) instead of queueing them for
+    // review. "other" is NOT auto-filed — an unrecognisable document might be
+    // a mangled invoice, so a human looks at it.
+    if (result.doc_type === 'statement' || result.doc_type === 'remittance') {
+      run(
+        `UPDATE invoices SET status = 'discarded', discarded_reason = ?, updated_at = ? WHERE id = ?`,
+        `Auto-filed: supplier ${result.doc_type} (not a bill)`,
+        nowIso(),
+        invoiceId,
+      );
+      audit(invoiceId, 'auto_filed', 'finny', {
+        doc_type: result.doc_type,
+        vendor: vendorName,
+        note: 'Filed without review — reopen from the invoice page if this is actually an invoice.',
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     run(

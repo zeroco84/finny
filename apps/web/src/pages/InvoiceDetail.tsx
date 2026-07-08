@@ -227,12 +227,25 @@ export default function InvoiceDetailPage() {
           )}
         </Banner>
       )}
-      {detail.doc_type && detail.doc_type !== 'invoice' && (
+      {detail.status === 'discarded' ? (
+        <Banner kind="info">
+          {detail.discarded_reason?.startsWith('Auto-filed') ? (
+            <>Finny filed this automatically as a supplier <strong>{detail.doc_type}</strong> — it never
+            entered the review queue and nothing was sent anywhere.</>
+          ) : (
+            <>Discarded{detail.discarded_reason ? <>: {detail.discarded_reason}</> : ''}.</>
+          )}{' '}
+          <button className="btn btn-small" disabled={busy}
+            onClick={() => void api.reopenInvoice(detail.id).then((d) => { setDetail(d); setForm(null); void load(); })}>
+            Reopen for review
+          </button>
+        </Banner>
+      ) : detail.doc_type && detail.doc_type !== 'invoice' ? (
         <Banner kind="warn">
           The AI classified this document as a <strong>{detail.doc_type}</strong>, not an invoice. If that is
           right, discard it below.
         </Banner>
-      )}
+      ) : null}
       {detail.duplicate_summary && (
         <Banner kind="warn">
           Possible duplicate: same vendor and reference as{' '}

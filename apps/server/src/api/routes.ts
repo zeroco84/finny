@@ -15,6 +15,7 @@ import {
   getInvoiceRow,
   listApprovedForBlockDocs,
   listInvoices,
+  reopenInvoice,
   toDetail,
 } from '../services/invoices.js';
 import { entraCallback, entraLogin } from './entra.js';
@@ -273,6 +274,17 @@ export function buildRouter(): Router {
     audit(paramId(req), 'extraction_retry_requested', req.user!.email);
     void drainExtractionQueue();
     res.json({ ok: true });
+  });
+
+  // Safety valve for auto-filed statements (and accidental discards): put
+  // the document back into the review queue.
+  router.post('/invoices/:id/reopen', (req, res) => {
+    if (!reopenInvoice(paramId(req), req.user!.email)) {
+      res.status(409).json({ error: 'Only discarded documents can be reopened' });
+      return;
+    }
+    const row = getInvoiceRow(paramId(req));
+    res.json(row ? toDetail(row) : { ok: true });
   });
 
   router.post('/invoices/:id/retry-approval', async (req, res) => {
@@ -571,7 +583,7 @@ export function buildRouter(): Router {
       return;
     }
     const scenario = z
-      .enum(['normal', 'missing_po', 'no_ref', 'image', 'corrupt'])
+      .enum(['normal', 'missing_po', 'no_ref', 'image', 'corrupt', 'statement'])
       .catch('normal')
       .parse(req.body?.scenario);
     const count = Math.max(1, Math.min(10, Number(req.body?.count ?? 1)));

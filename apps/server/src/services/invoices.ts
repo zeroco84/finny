@@ -10,7 +10,7 @@ import type {
 import { REQUIRED_FIELDS } from '@finny/shared';
 import { all, jsonParse, one, run } from '../db/db.js';
 import { centsToDecimal, newId, nowIso } from '../domain/util.js';
-import { auditForInvoice } from './audit.js';
+import { audit, auditForInvoice } from './audit.js';
 
 export type InvoiceRow = Record<string, unknown>;
 
@@ -182,6 +182,23 @@ export function createInvoice(input: NewInvoiceInput): string {
     now,
   );
   return id;
+}
+
+/**
+ * Put a discarded document back in front of a human — the safety valve for
+ * auto-filed statements that were actually invoices (and for accidental
+ * manual discards).
+ */
+export function reopenInvoice(id: string, who: string): boolean {
+  const row = one<{ status: string }>('SELECT status FROM invoices WHERE id = ?', id);
+  if (!row || row.status !== 'discarded') return false;
+  run(
+    `UPDATE invoices SET status = 'needs_review', discarded_reason = NULL, updated_at = ? WHERE id = ?`,
+    nowIso(),
+    id,
+  );
+  audit(id, 'reopened', who, {});
+  return true;
 }
 
 const TAB_FILTERS: Record<string, string> = {

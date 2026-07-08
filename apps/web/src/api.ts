@@ -72,6 +72,7 @@ export const api = {
   review: (id: string, submission: ReviewSubmission) =>
     post<InvoiceDetail>(`/invoices/${id}/review`, submission),
   retryExtraction: (id: string) => post<{ ok: boolean }>(`/invoices/${id}/retry-extraction`),
+  reopenInvoice: (id: string) => post<InvoiceDetail>(`/invoices/${id}/reopen`),
   retryApproval: (id: string) => post<InvoiceDetail>(`/invoices/${id}/retry-approval`),
   upload: async (file: File): Promise<{ id: string }> => {
     const res = await fetch(`/api/invoices/upload?filename=${encodeURIComponent(file.name)}`, {

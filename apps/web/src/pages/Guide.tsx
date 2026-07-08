@@ -205,7 +205,20 @@ export default function GuidePage() {
               Open the linked invoice first; send a flagged one only if it's genuinely different.
             </Term>
             <Term label="Discard">
-              For non-invoices (statements, spam) — give a reason. It's recorded in Completed, not deleted.
+              For non-invoices (spam, quotes) — give a reason. It's recorded in Completed, not deleted.
+            </Term>
+            <Term label="Statements file themselves">
+              Supplier statements and remittance advices sent to the mailbox never reach this queue:
+              Finny classifies them and files them straight into <strong>Completed</strong>, audited,
+              with no alert. If one was actually an invoice, open it there and press{' '}
+              <strong>Reopen for review</strong>. Documents Finny can't classify at all still come to
+              you — only clearly recognised statements and remittances are auto-filed.
+            </Term>
+            <Term label="Photos & scans">
+              Invoices arriving as PNG/JPG photos are read exactly like PDFs — same fields, same
+              confidence flags, and a photographed statement still files itself. An image too large
+              or unreadable is parked in <strong>Failed</strong> with an alert telling you what to
+              ask the supplier for.
             </Term>
             <Callout>
               Confirm is blocked until vendor, invoice ref, gross, category, approver, entity and
@@ -410,8 +423,13 @@ export default function GuidePage() {
               document. The duplicate flag on the new copy is expected — confirm through it.
             </Faq>
             <Faq q="I discarded something by mistake">
-              Discarded invoices stay in <strong>Completed</strong> with their full history — re-upload
-              the document to process it fresh.
+              Discarded invoices stay in <strong>Completed</strong> with their full history — open it
+              and press <strong>Reopen for review</strong> to put it back in the queue.
+            </Faq>
+            <Faq q="A statement was filed but it's actually an invoice">
+              Open it under <strong>Completed</strong> (it carries a “statement” tag) and press{' '}
+              <strong>Reopen for review</strong> — everything Finny extracted is still there, and the
+              audit trail shows both the auto-file and the reopen.
             </Faq>
           </Chapter>
 

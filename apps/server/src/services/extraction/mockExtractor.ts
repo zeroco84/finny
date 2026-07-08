@@ -98,6 +98,29 @@ export const mockExtractor: Extractor = {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     const vendor = lines[0] ?? null;
 
+    // Statements and remittance advices: classify and stop — the pipeline
+    // auto-files these instead of queueing them for review.
+    if (/statement\s+of\s+(?:your\s+)?account/i.test(text) || /remittance\s+advice/i.test(text)) {
+      const docType = /remittance\s+advice/i.test(text) ? 'remittance' : 'statement';
+      return {
+        doc_type: docType,
+        vendor_name: field(vendor, 'vendor'),
+        invoice_ref: emptyField(),
+        invoice_date: emptyField(),
+        net: emptyField(),
+        vat: emptyField(),
+        gross: emptyField(),
+        vat_rate: emptyField(),
+        vat_number: emptyField(),
+        po_number: emptyField(),
+        billed_to_entity: emptyField(),
+        project: emptyField(),
+        line_items: [],
+        proposed_category: { name: null, confidence: 0, rationale: `Not an invoice (${docType}) — no routing.` },
+        proposed_approver: { email_or_name: null, confidence: 0, rationale: 'Not an invoice.' },
+      };
+    }
+
     const ref = match(text, [
       /invoice\s*(?:no|number|#)\.?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
       /our\s*ref\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,

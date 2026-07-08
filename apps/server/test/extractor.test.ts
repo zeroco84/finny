@@ -60,6 +60,17 @@ describe('sample invoice -> mock extractor round trip', () => {
     expect(result.po_number.confidence).toBe(0);
   });
 
+  it('classifies a statement of account as a statement, not an invoice', async () => {
+    const generated = await generateSampleInvoice({ vendorIndex: 0, scenario: 'statement', rng: seededRng(5) });
+    const result = await mockExtractor.extract(generated.buffer, 'application/pdf', context);
+    expect(result.doc_type).toBe('statement');
+    expect(result.vendor_name.value).toBe('Hegarty Steel Ltd');
+    // No amounts, ref, or routing — a statement is not a bill.
+    expect(result.gross.value).toBeNull();
+    expect(result.invoice_ref.value).toBeNull();
+    expect(result.proposed_category.name).toBeNull();
+  });
+
   it('rejects corrupt files as unreadable', async () => {
     const generated = await generateSampleInvoice({ scenario: 'corrupt', rng: seededRng(9) });
     await expect(mockExtractor.extract(generated.buffer, 'application/pdf', context)).rejects.toThrow(

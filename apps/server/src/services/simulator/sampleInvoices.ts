@@ -91,7 +91,7 @@ export const VENDOR_TEMPLATES: VendorTemplate[] = [
   },
 ];
 
-export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt';
+export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt' | 'statement';
 
 // Kept aligned with the seeded settings (entities / projects) so the mock
 // extractor's list-matching has realistic work to do.
@@ -146,6 +146,43 @@ export async function generateSampleInvoice(opts: {
   }
   if (scenario === 'image') {
     return { buffer: TINY_PNG, filename: `scan-${ref}.png`, vendor, ref, subject: `Scanned invoice ${ref} — ${vendor.name}` };
+  }
+  if (scenario === 'statement') {
+    // Month-end statement of account — what suppliers routinely send to the
+    // AP mailbox alongside invoices. Not a bill; Finny should file it.
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    const finished = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+    const dateText = date.toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const balance = Math.round((2000 + rng() * 30000) * 100) / 100;
+    doc.fontSize(18).text(vendor.name);
+    doc.fontSize(9).fillColor('#555').text(vendor.address);
+    doc.text(`VAT Reg No: ${vendor.vatNumber}`);
+    doc.moveDown(1.2);
+    doc.fillColor('#000').fontSize(15).text('STATEMENT OF ACCOUNT');
+    doc.fontSize(11).text(`Statement Date: ${dateText}`);
+    doc.moveDown(0.8);
+    doc.fontSize(10).fillColor('#333');
+    doc.text('Date            Reference        Debit           Credit          Balance');
+    doc.text('-----------------------------------------------------------------------');
+    doc.text(`Opening balance                                                €${money(balance * 0.4)}`);
+    doc.text(`Invoices this period                    €${money(balance * 0.6)}`);
+    doc.moveDown(1);
+    doc.fontSize(11).fillColor('#000').text(`Balance Outstanding: €${money(balance)}`);
+    doc.moveDown(1);
+    doc.fontSize(9).fillColor('#555')
+      .text('This is a statement of your account, not a request for payment of a specific invoice.')
+      .text('Please contact accounts if any item does not agree with your records.');
+    doc.end();
+    const buffer = await finished;
+    return {
+      buffer,
+      filename: `statement-${date.toISOString().slice(0, 7)}.pdf`,
+      vendor,
+      ref,
+      subject: `Statement of account — ${vendor.name}`,
+    };
   }
 
   const doc = new PDFDocument({ size: 'A4', margin: 50 });

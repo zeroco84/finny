@@ -51,7 +51,9 @@ approvals, and one open unreadable-attachment alert. Re-seed anytime with `npm r
    the weekly correction-rate trend, and rule stability — the evidence the Lead uses before
    flipping Settings → Mode to live.
 
-You can also ingest real invoices with zero setup: drop PDFs into `apps/server/data/inbox/`
+You can also ingest real invoices with zero setup: drop PDFs (or PNG/JPG/GIF/WebP photos —
+with Claude extraction these are read by vision exactly like PDFs; images over 5MB are parked
+with an actionable alert) into `apps/server/data/inbox/`
 (the watched folder standing in for the mailbox) or use **Upload invoice** on the queue.
 
 ---
@@ -73,6 +75,7 @@ You can also ingest real invoices with zero setup: drop PDFs into `apps/server/d
 | Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → SMTP email when configured |
 | Audit trail | `audit_events` table, timeline on every invoice | — |
 | Duplicate detection (P1) | `findDuplicate` + warning banners | same vendor + invoice ref |
+| Non-invoice handling | doc-type classification in extraction; statements/remittances auto-file to Completed (audited, reopenable) — "other" still goes to review | same in both providers |
 | Accuracy dashboard (P1) | `metrics.ts` + Dashboard page | AI-vs-human comparisons from every completed review |
 | Configurable thresholds (P1) | Settings (confidence %, SLA hours) | — |
 

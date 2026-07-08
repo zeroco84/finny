@@ -16,6 +16,42 @@ function getClient(): Anthropic {
 }
 
 const MAX_DOCUMENT_BYTES = 30 * 1024 * 1024; // API request cap is 32MB
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // the API rejects images over 5MB
+
+/** Image types the Claude API accepts (photographed/scanned invoices). */
+const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+type ImageMediaType = (typeof IMAGE_MEDIA_TYPES)[number];
+
+/**
+ * The document/image content block for one attachment. Pure — exported for
+ * tests. Throws UnreadableDocumentError (routed to the failed queue with an
+ * unreadable-attachment alert) for types or sizes the API would reject,
+ * with a message a human can act on.
+ */
+export function buildAttachmentBlock(buffer: Buffer, mime: string): Anthropic.ContentBlockParam {
+  const data = () => buffer.toString('base64');
+  if (mime === 'application/pdf') {
+    if (buffer.byteLength > MAX_DOCUMENT_BYTES) {
+      throw new UnreadableDocumentError(
+        `PDF is ${(buffer.byteLength / 1e6).toFixed(1)}MB — over the ${MAX_DOCUMENT_BYTES / 1e6}MB extraction limit. Ask the supplier for a smaller copy.`,
+      );
+    }
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: data() } };
+  }
+  // Some senders label JPEGs with the non-standard image/jpg.
+  const normalized = mime === 'image/jpg' ? 'image/jpeg' : mime;
+  if ((IMAGE_MEDIA_TYPES as readonly string[]).includes(normalized)) {
+    if (buffer.byteLength > MAX_IMAGE_BYTES) {
+      throw new UnreadableDocumentError(
+        `Image is ${(buffer.byteLength / 1e6).toFixed(1)}MB — the extraction model accepts images up to ${MAX_IMAGE_BYTES / 1e6}MB. Ask the supplier for a smaller photo or a PDF.`,
+      );
+    }
+    return { type: 'image', source: { type: 'base64', media_type: normalized as ImageMediaType, data: data() } };
+  }
+  throw new UnreadableDocumentError(
+    `Unsupported attachment type "${mime}" — Finny reads PDF, PNG, JPG, GIF and WebP. Ask the supplier to resend in one of those formats.`,
+  );
+}
 
 const fieldSchema = { type: 'object' as const, properties: {
   value: { type: ['string', 'null'] as const, description: 'Exact value as printed on the document, or null if absent/illegible' },
@@ -150,19 +186,7 @@ export const anthropicExtractor: Extractor = {
   name: 'anthropic',
 
   async extract(buffer: Buffer, mime: string, context: RulesContext): Promise<ExtractionResult> {
-    if (buffer.byteLength > MAX_DOCUMENT_BYTES) {
-      throw new UnreadableDocumentError(
-        `Attachment is ${(buffer.byteLength / 1e6).toFixed(1)}MB — over the ${MAX_DOCUMENT_BYTES / 1e6}MB extraction limit`,
-      );
-    }
-    const data = buffer.toString('base64');
-    const documentBlock: Anthropic.ContentBlockParam =
-      mime === 'application/pdf'
-        ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
-        : {
-            type: 'image',
-            source: { type: 'base64', media_type: mime as 'image/png' | 'image/jpeg', data },
-          };
+    const documentBlock = buildAttachmentBlock(buffer, mime);
 
     let response: Anthropic.Message;
     try {

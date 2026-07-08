@@ -20,6 +20,7 @@ const SCENARIOS: { key: string; label: string }[] = [
   { key: 'no_ref', label: 'Invoice without a reference' },
   { key: 'image', label: 'Photographed invoice (image)' },
   { key: 'corrupt', label: 'Corrupt attachment (alert demo)' },
+  { key: 'statement', label: 'Supplier statement (auto-filed)' },
   { key: 'batch', label: 'Batch of 5 invoices' },
 ];
 
@@ -52,7 +53,9 @@ export default function Queue() {
     setNotice(
       scenario === 'corrupt'
         ? 'Corrupt attachment sent — watch the Failed tab and Alerts.'
-        : `Simulated ${count} incoming invoice${count > 1 ? 's' : ''} — extraction runs in a few seconds.`,
+        : scenario === 'statement'
+          ? 'Supplier statement sent — Finny files it under Completed automatically (no review needed).'
+          : `Simulated ${count} incoming invoice${count > 1 ? 's' : ''} — extraction runs in a few seconds.`,
     );
     setTimeout(() => setNotice(null), 6000);
     await load();
@@ -77,7 +80,7 @@ export default function Queue() {
           <input
             ref={fileInput}
             type="file"
-            accept=".pdf,.png,.jpg,.jpeg"
+            accept=".pdf,.png,.jpg,.jpeg,.gif,.webp"
             multiple
             hidden
             onChange={(e) => void onUpload(e.target.files)}
