@@ -1,6 +1,6 @@
 # Finny UI Kit — build conventions
 
-Finny is Meadowvale's accounts-payable tool: a light, calm finance UI (warm off-white background,
+Finny is an accounts-payable tool: a light, calm finance UI (warm off-white background,
 deep pine-green brand, amber accents). Everything below exists in the shipped `styles.css` /
 `_ds_bundle.css` — read those files before inventing anything.
 

@@ -42,7 +42,7 @@ export const config = {
     tenantId: env('GRAPH_TENANT_ID'),
     clientId: env('GRAPH_CLIENT_ID'),
     clientSecret: env('GRAPH_CLIENT_SECRET'),
-    mailbox: env('GRAPH_MAILBOX', 'apadmin@example.com'),
+    mailbox: env('GRAPH_MAILBOX'),
     markRead: env('GRAPH_MARK_READ', 'true') === 'true',
     // How many days of existing mailbox history to ingest when the poller
     // runs for the FIRST time. 0 = only mail arriving after enablement — the

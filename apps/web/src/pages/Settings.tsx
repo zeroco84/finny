@@ -312,7 +312,7 @@ export default function SettingsPage() {
           <div className="row-actions">
             <input placeholder="Name" value={newApprover.name}
               onChange={(e) => setNewApprover({ ...newApprover, name: e.target.value })} />
-            <input placeholder="email@example.com" value={newApprover.email}
+            <input placeholder="email@company.com" value={newApprover.email}
               onChange={(e) => setNewApprover({ ...newApprover, email: e.target.value })} />
             <button className="btn btn-small btn-primary" disabled={!newApprover.name || !newApprover.email}
               onClick={() => void api.addApprover(newApprover).then(() => {

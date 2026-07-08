@@ -70,6 +70,13 @@ interface GraphAttachment {
  * mailbox_auth_failure alert immediately.
  */
 export async function pollGraphMailbox(): Promise<void> {
+  if (!config.graph.mailbox) {
+    setStatus('mail_last_error', 'GRAPH_MAILBOX is not set');
+    await raiseAlert('mailbox_auth_failure', {
+      error: 'MAIL_PROVIDER=graph but GRAPH_MAILBOX is not set — Finny does not know which shared mailbox to poll',
+    });
+    return;
+  }
   const mailbox = encodeURIComponent(config.graph.mailbox);
   let watermark = one<{ value: string }>(
     `SELECT value FROM system_status WHERE key = 'graph_mail_watermark'`,

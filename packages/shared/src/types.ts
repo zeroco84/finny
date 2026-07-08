@@ -52,7 +52,7 @@ export interface ExtractionSnapshot {
   vat_rate: number | null; // percent
   vat_number: string | null;
   po_number: string | null;
-  /** Which Meadowvale legal entity the invoice is addressed to. */
+  /** Which legal entity the invoice is addressed to. */
   entity: string | null;
   /** Project code the document references (from the configured project list). */
   project_code: string | null;

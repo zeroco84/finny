@@ -64,7 +64,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
           <a className="btn btn-primary login-ms" href="/api/auth/entra/login">
             <MsLogo /> Sign in with Microsoft 365
           </a>
-          <p className="login-note">Use your Meadowvale work account. Access is managed by IT.</p>
+          <p className="login-note">Use your Microsoft work account. Access is managed by IT.</p>
         </div>
       </div>
     );
@@ -83,7 +83,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
           <input
             type="email"
             required
-            placeholder="you@example.com"
+            placeholder="you@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />

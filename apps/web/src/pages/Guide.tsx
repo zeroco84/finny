@@ -182,7 +182,7 @@ export default function GuidePage() {
               original visible.
             </p>
             <Term label="Billed to (entity)">
-              Which Meadowvale company the invoice is addressed to — it decides whose books this posts
+              Which of our companies the invoice is addressed to — it decides whose books this posts
               into, so it's required.
             </Term>
             <Term label="Project">

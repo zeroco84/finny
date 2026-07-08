@@ -23,7 +23,7 @@ import { recordApprovalDecision } from '../src/services/approvals/approvals.js';
 import { suggestAccountRef } from '../src/domain/util.js';
 
 const PROCESSOR = { email: 'amy@example.com', name: 'Amy Byrne', role: 'processor' as const };
-const LEAD = { email: 'ap.lead@example.com', name: 'Rick Brennan', role: 'lead' as const };
+const LEAD = { email: 'ap.lead@example.com', name: 'Niamh Egan', role: 'lead' as const };
 
 // Ground truth: how the AP team actually routes each vendor today.
 const ROUTING: Record<string, { category: string; approver: string }> = {

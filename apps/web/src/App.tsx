@@ -33,7 +33,7 @@ function Shell() {
       <header className="topbar">
         <button className="wordmark" onClick={() => navigate('/')}>
           <img src={logo} alt="" className="nav-logo" />
-          Finny<span className="wordmark-sub">Meadowvale AP</span>
+          Finny<span className="wordmark-sub">Accounts Payable</span>
         </button>
         <nav>
           <NavLink to="/" end>

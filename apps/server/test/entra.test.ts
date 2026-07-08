@@ -18,7 +18,7 @@ beforeAll(() => {
 
 describe('roleForEmail / userFromClaims', () => {
   it('FINNY_LEAD_EMAILS become leads (case/whitespace-insensitive), others processors', () => {
-    expect(roleForEmail('Amy@Meadowvale.com ')).toBe('lead');
+    expect(roleForEmail('Amy@Example.com ')).toBe('lead');
     expect(roleForEmail('bob@example.com')).toBe('processor');
   });
 

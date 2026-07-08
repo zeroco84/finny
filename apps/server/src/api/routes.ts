@@ -135,7 +135,7 @@ export function buildRouter(): Router {
         .send(
           '<body style="font-family: system-ui, sans-serif; padding: 3rem; color: #1d2721; background: #f7f5f0">' +
             '<h2>This invoice link is invalid or has expired</h2>' +
-            '<p>Links from approval requests are valid for 14 days. Ask the Meadowvale AP team to resend it from Finny.</p></body>',
+            '<p>Links from approval requests are valid for 14 days. Ask the AP team to resend it from Finny.</p></body>',
         );
       return;
     }

@@ -2,7 +2,7 @@
   "name": "finny",
   "private": true,
   "version": "0.1.0",
-  "description": "Finny — Finance Invoice Notification & Navigation for You (Meadowvale AP automation)",
+  "description": "Finny — Finance Invoice Notification & Navigation for You (AP invoice automation)",
   "workspaces": [
     "apps/*",
     "packages/*"
