@@ -35,25 +35,26 @@ describe('volumeMetrics', () => {
     seq = 0;
   });
 
-  it('totals, daily buckets with gap fill, and invoice-date-over-arrival dating', () => {
+  it('totals on the range; trend is trailing-12-months of actual calendar months', () => {
     insertInvoice({ invoiceDate: '2026-07-01', gross: 10000 });
     insertInvoice({ invoiceDate: '2026-07-01', gross: 25000 });
     // No printed invoice date -> dated by arrival (3 Jul).
     insertInvoice({ invoiceDate: null, receivedAt: '2026-07-03T09:00:00.000Z', gross: 5000 });
     // Dated inside the range but received outside it — invoice date wins.
     insertInvoice({ invoiceDate: '2026-07-02', receivedAt: '2026-08-09T09:00:00.000Z', gross: null });
-    // Outside the range entirely.
+    // Before the range: excluded from totals, visible in the trend context.
     insertInvoice({ invoiceDate: '2026-06-30', gross: 99999 });
+    // Older than the trailing year: not charted at all.
+    insertInvoice({ invoiceDate: '2025-01-15', gross: 11111 });
 
     const v = volumeMetrics('2026-07-01', '2026-07-04');
-    expect(v.bucket).toBe('day');
     expect(v.totals).toEqual({ count: 4, gross_cents: 40000 });
-    expect(v.series).toEqual([
-      { bucket: '2026-07-01', count: 2, gross_cents: 35000 },
-      { bucket: '2026-07-02', count: 1, gross_cents: 0 }, // gross unknown -> counts, adds no value
-      { bucket: '2026-07-03', count: 1, gross_cents: 5000 },
-      { bucket: '2026-07-04', count: 0, gross_cents: 0 }, // gap filled
-    ]);
+    expect(v.bucket).toBe('month');
+    expect(v.series_from).toBe('2025-08-01');
+    expect(v.series).toHaveLength(12); // Aug-25 .. Jul-26, gap-filled
+    expect(v.series[0]).toEqual({ bucket: '2025-08', count: 0, gross_cents: 0 });
+    expect(v.series[10]).toEqual({ bucket: '2026-06', count: 1, gross_cents: 99999 });
+    expect(v.series[11]).toEqual({ bucket: '2026-07', count: 4, gross_cents: 40000 });
   });
 
   it('excludes discarded documents (filed statements are not invoices)', () => {
@@ -63,13 +64,14 @@ describe('volumeMetrics', () => {
     expect(v.totals).toEqual({ count: 1, gross_cents: 10000 });
   });
 
-  it('switches to monthly buckets for long ranges', () => {
-    insertInvoice({ invoiceDate: '2026-03-15', gross: 1000 });
+  it('a custom range longer than a year charts its own months', () => {
+    insertInvoice({ invoiceDate: '2025-02-15', gross: 1000 });
     insertInvoice({ invoiceDate: '2026-05-20', gross: 2000 });
-    const v = volumeMetrics('2026-03-01', '2026-06-30');
-    expect(v.bucket).toBe('month');
-    expect(v.series.map((p) => p.bucket)).toEqual(['2026-03', '2026-04', '2026-05', '2026-06']);
-    expect(v.series[1]).toEqual({ bucket: '2026-04', count: 0, gross_cents: 0 });
+    const v = volumeMetrics('2025-01-01', '2026-06-30');
+    expect(v.series_from).toBe('2025-01-01'); // range start wins when older than 12 months back
+    expect(v.series).toHaveLength(18); // Jan-25 .. Jun-26
+    expect(v.series[1]).toEqual({ bucket: '2025-02', count: 1, gross_cents: 1000 });
+    expect(v.series[16]).toEqual({ bucket: '2026-05', count: 1, gross_cents: 2000 });
   });
 
   it('ranks top suppliers by value and by count independently', () => {

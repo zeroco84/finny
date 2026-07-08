@@ -572,15 +572,23 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .period-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
 .period-custom { display: flex; align-items: center; gap: 8px; }
 .period-custom input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; }
-.volume-bar { fill: var(--brand); opacity: 0.55; }
-.volume-bar:hover { opacity: 0.85; }
-.volume-count-line { stroke: var(--accent); stroke-width: 2; }
-.volume-count-dot { fill: var(--accent); }
+.volume-trend { max-width: none; }
+.volume-bar { fill: var(--brand); opacity: 0.28; }
+.volume-bar-selected { opacity: 0.55; }
+.volume-bar:hover { opacity: 0.8; }
+.volume-count-line { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.volume-count-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.6; }
+.volume-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.volume-axis-label { font-size: 11px; fill: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.volume-axis-count { fill: var(--warn); font-weight: 700; }
+.volume-tick { font-size: 12px; }
 .volume-legend { display: flex; gap: 18px; font-size: 0.8rem; color: var(--ink-soft); margin-top: 6px; }
 .legend-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 5px; }
 .legend-bar { background: var(--brand); opacity: 0.55; }
 .legend-line { background: var(--accent); height: 3px; vertical-align: middle; }
-.rank-row .bar-label { width: 172px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row { grid-template-columns: 150px 1fr auto; }
+.rank-row .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row .bar-value { white-space: nowrap; }
 
 /* Settings → Nominal codes pulled from Sage */
 .nominal-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }

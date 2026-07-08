@@ -332,8 +332,10 @@ export interface VendorVolume {
 export interface VolumeMetrics {
   from: string; // yyyy-mm-dd inclusive
   to: string; // yyyy-mm-dd inclusive
-  /** Series granularity: daily for ranges up to ~2 months, else monthly. */
-  bucket: 'day' | 'month';
+  /** The trend series is always actual calendar months. */
+  bucket: 'month';
+  /** First day charted: the range start, extended back to ≥12 trailing months. */
+  series_from: string;
   totals: { count: number; gross_cents: number };
   series: { bucket: string; count: number; gross_cents: number }[];
   top_by_value: VendorVolume[];

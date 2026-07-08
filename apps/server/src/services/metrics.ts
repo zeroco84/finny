@@ -17,12 +17,13 @@ import { isoWeekLabel } from '../domain/util.js';
 const EFFECTIVE_DATE = `COALESCE(invoice_date, DATE(received_at))`;
 const VOLUME_BASE = `FROM invoices WHERE status != 'discarded' AND ${EFFECTIVE_DATE} >= ? AND ${EFFECTIVE_DATE} <= ?`;
 
-function eachDay(from: string, to: string): string[] {
-  const out: string[] = [];
-  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 86_400_000) {
-    out.push(new Date(t).toISOString().slice(0, 10));
-  }
-  return out;
+/** yyyy-mm month label shifted by n months. */
+function shiftMonth(month: string, n: number): string {
+  let [y, m] = month.split('-').map(Number);
+  m += n;
+  while (m < 1) { m += 12; y -= 1; }
+  while (m > 12) { m -= 12; y += 1; }
+  return `${y}-${String(m).padStart(2, '0')}`;
 }
 
 function eachMonth(from: string, to: string): string[] {
@@ -45,15 +46,18 @@ export function volumeMetrics(from: string, to: string): VolumeMetrics {
     from, to,
   );
 
-  const spanDays = (Date.parse(to) - Date.parse(from)) / 86_400_000;
-  const bucket: VolumeMetrics['bucket'] = spanDays <= 62 ? 'day' : 'month';
-  const bucketExpr = bucket === 'day' ? EFFECTIVE_DATE : `substr(${EFFECTIVE_DATE}, 1, 7)`;
+  // The trend is always actual calendar months: the selected range's months,
+  // extended back to at least the trailing twelve so a one-month selection
+  // still shows a real time series. Totals and rankings stay on [from, to].
+  const twelveBack = `${shiftMonth(to.slice(0, 7), -11)}-01`;
+  const seriesFrom = from < twelveBack ? `${from.slice(0, 7)}-01` : twelveBack;
   const rows = all<{ b: string; n: number; gross: number | null }>(
-    `SELECT ${bucketExpr} AS b, COUNT(*) AS n, SUM(gross_cents) AS gross ${VOLUME_BASE} GROUP BY b ORDER BY b`,
-    from, to,
+    `SELECT substr(${EFFECTIVE_DATE}, 1, 7) AS b, COUNT(*) AS n, SUM(gross_cents) AS gross
+     ${VOLUME_BASE} GROUP BY b ORDER BY b`,
+    seriesFrom, to,
   );
   const byBucket = new Map(rows.map((r) => [String(r.b), r]));
-  const series = (bucket === 'day' ? eachDay(from, to) : eachMonth(from, to)).map((b) => {
+  const series = eachMonth(seriesFrom, to).map((b) => {
     const r = byBucket.get(b);
     return { bucket: b, count: r ? Number(r.n) : 0, gross_cents: r ? Number(r.gross ?? 0) : 0 };
   });
@@ -68,7 +72,8 @@ export function volumeMetrics(from: string, to: string): VolumeMetrics {
   return {
     from,
     to,
-    bucket,
+    bucket: 'month',
+    series_from: seriesFrom,
     totals: { count: totals ? Number(totals.n) : 0, gross_cents: totals ? Number(totals.gross ?? 0) : 0 },
     series,
     top_by_value: topBy('gross DESC, n DESC'),

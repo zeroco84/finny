@@ -18,67 +18,123 @@ function monthBounds(offset: number): { from: string; to: string } {
   return { from: iso(first), to: iso(last) };
 }
 
-function bucketLabel(bucket: string, granularity: 'day' | 'month'): string {
-  if (granularity === 'day') return bucket.slice(8); // day of month
+/** "2026-08" -> "Aug-26". */
+function monthLabel(bucket: string): string {
   const [y, m] = bucket.split('-').map(Number);
   // timeZone UTC: without it the label renders in local time and can show
   // the previous month for viewers west of UTC.
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IE', {
+  const name = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IE', {
     month: 'short',
-    year: '2-digit',
     timeZone: 'UTC',
   });
+  return `${name}-${String(y).slice(2)}`;
 }
 
-/** Dual-series chart: bars = value per bucket, line = invoice count. */
-function VolumeTrend({ metrics }: { metrics: VolumeMetrics }) {
-  const today = iso(new Date());
-  // Don't chart the empty future of an in-progress month.
-  const series = metrics.series.filter((p) => p.bucket.slice(0, 10) <= today);
-  if (series.length === 0 || metrics.totals.count === 0) {
-    return <EmptyState title="No invoices in this period" hint="Try a different range." />;
+/** €183,698.23 -> "€184k" — axis labels stay short. */
+function eurosCompact(cents: number): string {
+  const v = cents / 100;
+  if (v >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 10_000) return `€${Math.round(v / 1000)}k`;
+  if (v >= 1_000) return `€${(v / 1000).toFixed(1)}k`;
+  return `€${Math.round(v)}`;
+}
+
+/**
+ * Catmull-Rom smoothing as cubic Béziers, with control points clamped to the
+ * plot band so the curve never overshoots below the axis on hard zeros.
+ */
+function smoothPath(pts: { x: number; y: number }[], yTop: number, yBottom: number): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  const clamp = (v: number) => Math.max(yTop, Math.min(yBottom, v));
+  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const t = 1 / 6;
+    const c1x = p1.x + (p2.x - p0.x) * t;
+    const c1y = clamp(p1.y + (p2.y - p0.y) * t);
+    const c2x = p2.x - (p3.x - p1.x) * t;
+    const c2y = clamp(p2.y - (p3.y - p1.y) * t);
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
   }
+  return d;
+}
+
+/** Dual-series chart: bars = value per month, smooth line = invoice count. */
+function VolumeTrend({ metrics }: { metrics: VolumeMetrics }) {
+  const series = metrics.series;
+  const hasAny = series.some((p) => p.count > 0);
+  if (series.length === 0 || !hasAny) {
+    return <EmptyState title="No invoices in or before this period" hint="Try a different range." />;
+  }
+  // Months inside the selected range render brighter than the trailing context.
+  const inRange = (b: string) => b >= metrics.from.slice(0, 7) && b <= metrics.to.slice(0, 7);
   const w = 680;
-  const h = 190;
-  const pad = { l: 10, r: 10, t: 14, b: 24 };
+  const h = 235;
+  const pad = { l: 52, r: 34, t: 16, b: 32 };
   const innerW = w - pad.l - pad.r;
   const innerH = h - pad.t - pad.b;
   const maxGross = Math.max(...series.map((p) => p.gross_cents), 1);
   const maxCount = Math.max(...series.map((p) => p.count), 1);
   const slot = innerW / series.length;
-  const barW = Math.max(3, Math.min(34, slot * 0.62));
+  const barW = Math.max(4, Math.min(38, slot * 0.58));
   const x = (i: number) => pad.l + slot * i + slot / 2;
   const yGross = (v: number) => pad.t + innerH - (v / maxGross) * innerH;
   const yCount = (v: number) => pad.t + innerH - (v / maxCount) * innerH;
-  const tickStep = Math.max(1, Math.ceil(series.length / 12));
-  const line = series
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${yCount(p.count).toFixed(1)}`)
-    .join(' ');
+  const baseline = h - pad.b;
+  const tickStep = Math.max(1, Math.ceil(series.length / 10));
+  const showDots = series.length <= 45;
+  const line = smoothPath(series.map((p, i) => ({ x: x(i), y: yCount(p.count) })), pad.t, baseline);
+  const midCount = Math.ceil(maxCount / 2);
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="trend volume-trend" role="img" aria-label="Invoice count and value trend">
-      <line x1={pad.l} y1={h - pad.b} x2={w - pad.r} y2={h - pad.b} className="trend-axis" />
+      {/* Value gridlines with compact € labels (left) and count labels (right). */}
+      {[0.5, 1].map((f) => (
+        <g key={f}>
+          <line x1={pad.l} y1={yGross(maxGross * f)} x2={w - pad.r} y2={yGross(maxGross * f)} className="volume-grid" />
+          <text x={pad.l - 7} y={yGross(maxGross * f) + 4} textAnchor="end" className="volume-axis-label">
+            {eurosCompact(maxGross * f)}
+          </text>
+        </g>
+      ))}
+      <text x={w - pad.r + 7} y={yCount(maxCount) + 4} textAnchor="start" className="volume-axis-label volume-axis-count">
+        {maxCount}
+      </text>
+      {midCount !== maxCount && (
+        <text x={w - pad.r + 7} y={yCount(midCount) + 4} textAnchor="start" className="volume-axis-label volume-axis-count">
+          {midCount}
+        </text>
+      )}
+      <line x1={pad.l} y1={baseline} x2={w - pad.r} y2={baseline} className="trend-axis" />
+
       {series.map((p, i) => (
         <rect
           key={p.bucket}
           x={x(i) - barW / 2}
           y={yGross(p.gross_cents)}
           width={barW}
-          height={h - pad.b - yGross(p.gross_cents)}
-          className="volume-bar"
+          height={Math.max(0, baseline - yGross(p.gross_cents))}
+          rx={Math.min(4, barW / 3)}
+          className={`volume-bar ${inRange(p.bucket) ? 'volume-bar-selected' : ''}`}
         >
-          <title>{`${p.bucket}: ${euros(p.gross_cents)} across ${p.count} invoice${p.count === 1 ? '' : 's'}`}</title>
+          <title>{`${monthLabel(p.bucket)}: ${euros(p.gross_cents)} across ${p.count} invoice${p.count === 1 ? '' : 's'}`}</title>
         </rect>
       ))}
       <path d={line} className="volume-count-line" fill="none" />
       {series.map((p, i) => (
         <g key={`c-${p.bucket}`}>
-          <circle cx={x(i)} cy={yCount(p.count)} r={2.8} className="volume-count-dot">
-            <title>{`${p.bucket}: ${p.count} invoice${p.count === 1 ? '' : 's'}`}</title>
-          </circle>
-          {i % tickStep === 0 && (
-            <text x={x(i)} y={h - 8} textAnchor="middle" className="trend-tick">
-              {bucketLabel(p.bucket, metrics.bucket)}
+          {showDots && (
+            <circle cx={x(i)} cy={yCount(p.count)} r={4} className="volume-count-dot">
+              <title>{`${monthLabel(p.bucket)}: ${p.count} invoice${p.count === 1 ? '' : 's'}`}</title>
+            </circle>
+          )}
+          {(series.length - 1 - i) % tickStep === 0 && (
+            <text x={x(i)} y={h - 9} textAnchor="middle" className="trend-tick volume-tick">
+              {monthLabel(p.bucket)}
             </text>
           )}
         </g>
@@ -196,7 +252,8 @@ export default function VolumePage() {
           <div className="card">
             <h2>Trend</h2>
             <p className="muted small">
-              Bars are value (€); the line is the number of invoices — {metrics.bucket === 'day' ? 'per day' : 'per month'}.
+              Bars are value (€); the line is the number of invoices — by calendar month, with the
+              trailing year for context. The brighter bars are the selected period.
             </p>
             <VolumeTrend metrics={metrics} />
             <div className="volume-legend">
