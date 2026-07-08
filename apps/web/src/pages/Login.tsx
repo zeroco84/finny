@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { SessionUser } from '@finny/shared';
 import { api } from '../api';
+import logo from '../assets/finny-logo.png';
 
 /** The four-square Microsoft logo (inline so no external asset). */
 function MsLogo() {
@@ -54,6 +55,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
     return (
       <div className="login-wrap">
         <div className="login-card">
+          <img src={logo} alt="Finny" className="login-logo" />
           <h1 className="wordmark login-mark">Finny</h1>
           <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
           {error && <p className="form-error">{error}</p>}
@@ -69,6 +71,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
+        <img src={logo} alt="Finny" className="login-logo" />
         <h1 className="wordmark login-mark">Finny</h1>
         <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
         <label>

@@ -75,6 +75,9 @@ small { font-size: 0.85em; }
   gap: 8px;
 }
 .wordmark-sub { font-size: 0.7rem; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.1em; text-transform: uppercase; }
+/* border-radius clips the white corner slivers baked into the source PNG */
+.nav-logo { width: 28px; height: 28px; border-radius: 24%; align-self: center; }
+.login-logo { width: 56px; height: 56px; border-radius: 24%; box-shadow: var(--shadow); }
 .topbar nav { display: flex; gap: 4px; flex: 1; }
 .topbar nav a {
   padding: 7px 13px;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import type { SessionUser } from '@finny/shared';
 import { api, ApiError } from './api';
+import logo from './assets/finny-logo.png';
 import { MetaProvider, useMeta } from './meta';
 import Login from './pages/Login';
 import Queue from './pages/Queue';
@@ -31,6 +32,7 @@ function Shell() {
       )}
       <header className="topbar">
         <button className="wordmark" onClick={() => navigate('/')}>
+          <img src={logo} alt="" className="nav-logo" />
           Finny<span className="wordmark-sub">Meadowvale AP</span>
         </button>
         <nav>
