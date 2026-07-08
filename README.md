@@ -63,7 +63,7 @@ You can also ingest real invoices with zero setup: drop PDFs into `apps/server/d
 | Mailbox ingestion (Graph) | `apps/server/src/services/ingestion/` | `mock` (watched inbox folder + simulator) → `MAIL_PROVIDER=graph` |
 | Extraction & classification | `apps/server/src/services/extraction/` | `mock` (deterministic PDF text parser) → `ANTHROPIC_API_KEY` for Claude |
 | Confidence per field / no fabrication | `pipeline.ts`, prompt in `anthropicExtractor.ts` | same in both providers; missing fields are blank + flagged |
-| Review queue app | `apps/web/` | dev sign-in → Entra ID SSO (seam in `apps/server/src/api/auth.ts`) |
+| Review queue app | `apps/web/` | dev sign-in → `AUTH_PROVIDER=entra` for Entra ID SSO (M365 accounts) |
 | Shadow vs live mode | Settings → Mode (Lead only); enforced server-side in `review.ts` | shadow by default on a fresh DB |
 | Corrections as structured feedback | `corrections` table, written by `review.ts` | — |
 | Learned rules layer | `rules.ts` + Rules page | structured table injected into the prompt as JSON context — not an unbounded prompt string |
@@ -140,12 +140,29 @@ Microsoft has moved this API before. If the tenant can't grant it, the pragmatic
 elsewhere is a Power Automate flow triggered by email/webhook; the provider seam
 (`createApprovalRequest` / `recordApprovalDecision`) is the only place that would change.
 
-### Wiring up Entra ID SSO
+### Wiring up Entra ID sign-in
 
-Dev sign-in is a signed session cookie issued by `/api/auth/dev-login`. For production, replace
-`readSession` in `apps/server/src/api/auth.ts` with Entra JWT validation (issuer + audience +
-JWKS) and map an AD group to the `lead` role; the whole app consumes only `req.user`
-(`{email, name, role}`), and the web app's login page gets replaced by the MSAL redirect.
+With `AUTH_PROVIDER=entra`, the login page becomes a single **Sign in with Microsoft 365**
+button: a server-side OpenID Connect authorization-code flow (with PKCE) against the tenant's
+v2.0 endpoint, ending in the same signed session cookie dev sign-in uses — the rest of the app
+is auth-provider-agnostic, and dev login is disabled. Setup:
+
+1. Reuse the mailbox app registration (or create one): **Authentication → Add platform → Web**,
+   redirect URI `https://<your-domain>/api/auth/entra/callback`.
+2. **API permissions**: delegated `openid`, `profile`, `email` (no admin consent needed).
+3. Set `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` (they fall back to the
+   `GRAPH_*` values, so if the mailbox is wired, just add the redirect URI) and
+   `AUTH_PROVIDER=entra`. The server refuses to boot if any are missing — dev login never
+   silently takes over on a live deploy.
+4. `FINNY_LEAD_EMAILS=amy@example.com,rory@example.com` — these sign in as **AP Lead**;
+   everyone else is a processor.
+5. **Who can sign in:** the tenant-specific endpoint already limits sign-in to your tenant. To
+   limit it to the finance team, open the app under *Enterprise applications*, set
+   **Assignment required = Yes**, and assign the team (or their group). That's access control
+   handled in Entra, where IT can audit it.
+
+Cookies are marked `Secure` automatically when `APP_URL` is https. Sign-out clears Finny's
+session but not the Microsoft session — the next sign-in is usually silent SSO.
 
 ### One-touch "Send to Sage" (HyperAccounts API)
 
@@ -242,8 +259,9 @@ select this repo → Deploy. You get a single web service (API + web app on one 
 persistent disk; the first boot seeds the demo dataset automatically, so the link lands on a
 populated queue. Everything runs on mock providers — no keys needed. Pushes to `main` auto-deploy.
 
-Notes: the dev sign-in means anyone with the URL can log in — fine for simulated data; put
-Cloudflare Access in front (or do the Entra swap) before real invoices. To run free-tier instead,
+Notes: the blueprint boots with dev sign-in, so anyone with the URL can log in — fine for
+simulated data; for the team-facing deploy set `AUTH_PROVIDER=entra` (see "Wiring up Entra ID
+sign-in") so access is M365 accounts only. To run free-tier instead,
 set `plan: free` and remove the `disk` block — the service then sleeps when idle and re-seeds
 fresh demo data on wake.
 

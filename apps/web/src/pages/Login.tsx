@@ -1,13 +1,36 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { SessionUser } from '@finny/shared';
 import { api } from '../api';
 
+/** The four-square Microsoft logo (inline so no external asset). */
+function MsLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
+      <rect x="0" y="0" width="10" height="10" fill="#f25022" />
+      <rect x="11" y="0" width="10" height="10" fill="#7fba00" />
+      <rect x="0" y="11" width="10" height="10" fill="#00a4ef" />
+      <rect x="11" y="11" width="10" height="10" fill="#ffb900" />
+    </svg>
+  );
+}
+
 export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => void }) {
+  const [provider, setProvider] = useState<'dev' | 'entra' | null>(null);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'processor' | 'lead'>('processor');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    // Entra callback failures land back here as /login?error=...
+    new URLSearchParams(window.location.search).get('error'),
+  );
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .authMode()
+      .then((m) => setProvider(m.provider))
+      .catch(() => setProvider('dev'));
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -21,6 +44,26 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
     } finally {
       setBusy(false);
     }
+  }
+
+  if (provider === null) {
+    return <div className="login-wrap" />;
+  }
+
+  if (provider === 'entra') {
+    return (
+      <div className="login-wrap">
+        <div className="login-card">
+          <h1 className="wordmark login-mark">Finny</h1>
+          <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
+          {error && <p className="form-error">{error}</p>}
+          <a className="btn btn-primary login-ms" href="/api/auth/entra/login">
+            <MsLogo /> Sign in with Microsoft 365
+          </a>
+          <p className="login-note">Use your Meadowvale work account. Access is managed by IT.</p>
+        </div>
+      </div>
+    );
   }
 
   return (

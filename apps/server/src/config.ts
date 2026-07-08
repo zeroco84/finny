@@ -81,6 +81,27 @@ export const config = {
   },
 
   authProvider: env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra',
+  // Entra ID SSO (AUTH_PROVIDER=entra). The ENTRA_* vars fall back to the
+  // GRAPH_* app registration — one registration can serve both mail polling
+  // (application permission) and user sign-in (web redirect URI).
+  entra: {
+    tenantId: env('ENTRA_TENANT_ID', env('GRAPH_TENANT_ID')),
+    clientId: env('ENTRA_CLIENT_ID', env('GRAPH_CLIENT_ID')),
+    clientSecret: env('ENTRA_CLIENT_SECRET', env('GRAPH_CLIENT_SECRET')),
+    // Must exactly match a redirect URI registered on the app registration.
+    redirectUri: env('ENTRA_REDIRECT_URI'), // default derived from APP_URL
+    // Override the OIDC issuer (tests point this at a mock IdP); default is
+    // the tenant's v2.0 endpoint.
+    issuer: env('ENTRA_ISSUER'),
+    // Test hook only: lets the OIDC flow talk to a plain-HTTP mock IdP.
+    allowHttp: env('ENTRA_ALLOW_HTTP') === 'true',
+  },
+  // Signed-in users with one of these emails get the AP Lead role;
+  // everyone else who can sign in is a processor.
+  leadEmails: env('FINNY_LEAD_EMAILS')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
   sessionSecret: '',
 };
 

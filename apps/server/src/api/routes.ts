@@ -17,6 +17,7 @@ import {
   listInvoices,
   toDetail,
 } from '../services/invoices.js';
+import { entraCallback, entraLogin } from './entra.js';
 import { requireBlockDocsToken } from './integrationAuth.js';
 import { ReviewError, retryApproval, submitReview } from '../services/review.js';
 import { resetForRetry } from '../services/extraction/pipeline.js';
@@ -66,6 +67,26 @@ export function buildRouter(): Router {
   // ── Health & auth ──────────────────────────────────────────────────────────
   router.get('/health', (_req, res) => {
     res.json({ ok: true, mode: getSettings().mode });
+  });
+
+  // Which login UI the SPA should render (public — the login page needs it).
+  router.get('/auth/mode', (_req, res) => {
+    res.json({ provider: config.authProvider });
+  });
+  // Entra ID SSO endpoints (no-ops unless AUTH_PROVIDER=entra).
+  router.get('/auth/entra/login', (req, res) => {
+    if (config.authProvider !== 'entra') {
+      res.status(400).json({ error: 'AUTH_PROVIDER is not "entra"' });
+      return;
+    }
+    void entraLogin(req, res);
+  });
+  router.get('/auth/entra/callback', (req, res) => {
+    if (config.authProvider !== 'entra') {
+      res.status(400).json({ error: 'AUTH_PROVIDER is not "entra"' });
+      return;
+    }
+    void entraCallback(req, res);
   });
 
   const loginSchema = z.object({

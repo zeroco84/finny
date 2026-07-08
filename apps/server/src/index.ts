@@ -6,6 +6,7 @@ import { config, ensureDataDirs } from './config.js';
 import { openDb } from './db/db.js';
 import { seedDefaults } from './services/settings.js';
 import { buildRouter } from './api/routes.js';
+import { entraConfigError } from './api/entra.js';
 import { startWorkers } from './workers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,15 @@ export function createApp(): express.Express {
 
 export function boot(): void {
   ensureDataDirs();
+  // Refuse to boot half-configured: with AUTH_PROVIDER=entra but no usable
+  // app registration, sign-in would dead-end (and dev login must NOT quietly
+  // take its place on a public deploy).
+  if (config.authProvider === 'entra') {
+    const problem = entraConfigError();
+    if (problem) {
+      throw new Error(`AUTH_PROVIDER=entra but ${problem} — see README "Wiring up Entra ID sign-in"`);
+    }
+  }
   openDb(config.dbPath);
   seedDefaults();
 }

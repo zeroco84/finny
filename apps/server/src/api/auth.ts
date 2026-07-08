@@ -25,14 +25,19 @@ function sign(payload: string): string {
   return crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url');
 }
 
+/** Cookies are marked Secure whenever the app's public URL is https. */
+function secureSuffix(): string {
+  return config.appUrl.startsWith('https') ? '; Secure' : '';
+}
+
 export function createSessionCookie(user: SessionUser): string {
   const payload = Buffer.from(JSON.stringify({ ...user, iat: Date.now() })).toString('base64url');
   const value = `${payload}.${sign(payload)}`;
-  return `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}`;
+  return `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}${secureSuffix()}`;
 }
 
 export function clearSessionCookie(): string {
-  return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
+  return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secureSuffix()}`;
 }
 
 export function readSession(req: Request): SessionUser | null {

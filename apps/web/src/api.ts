@@ -46,6 +46,7 @@ const patch = <T>(path: string, body: unknown) =>
 
 export const api = {
   me: () => get<SessionUser>('/me'),
+  authMode: () => get<{ provider: 'dev' | 'entra' }>('/auth/mode'),
   devLogin: (user: SessionUser) => post<SessionUser>('/auth/dev-login', user),
   logout: () => post<{ ok: boolean }>('/auth/logout'),
 

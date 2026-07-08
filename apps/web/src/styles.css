@@ -530,3 +530,4 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .login-tag { margin: -8px 0 6px; color: var(--ink-soft); font-size: 0.86rem; }
 .login-card label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); }
 .login-note { font-size: 0.78rem; color: var(--ink-soft); margin: 4px 0 0; }
+.login-ms { display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; margin-top: 6px; }
