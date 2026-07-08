@@ -386,6 +386,13 @@ export default function GuidePage() {
             <Term label="By vendor">
               Who's reliable, who needs corrections, and which vendors have a learned rule.
             </Term>
+            <Term label="Volume vs Accuracy">
+              The Dashboard opens on <strong>Volume</strong>: how many invoices and how much value,
+              by calendar month — This month / Last month / any custom range — with the daily or
+              monthly trend and the top five suppliers by value and by number (filed statements and
+              discarded documents don't count). The slider at the top flips to the{' '}
+              <strong>Accuracy</strong> report described above.
+            </Term>
           </Chapter>
 
           <Chapter n={10} id="settings" title="Settings">

@@ -11,6 +11,7 @@ import type {
   SageBatch,
   SessionUser,
   Settings,
+  VolumeMetrics,
 } from '@finny/shared';
 
 export class ApiError extends Error {
@@ -126,6 +127,7 @@ export const api = {
     ),
 
   dashboard: () => get<DashboardMetrics>('/metrics/dashboard'),
+  volume: (from: string, to: string) => get<VolumeMetrics>(`/metrics/volume?from=${from}&to=${to}`),
 
   settings: () => get<Settings>('/settings'),
   updateSettings: (patchBody: Partial<Settings>) => patch<Settings>('/settings', patchBody),

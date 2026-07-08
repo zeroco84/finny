@@ -321,6 +321,25 @@ export interface DashboardMetrics {
   active_rules: number;
 }
 
+/** One vendor's share of the volume dashboard's selected period. */
+export interface VendorVolume {
+  vendor: string;
+  count: number;
+  gross_cents: number;
+}
+
+/** Invoice count + value over a date range (the Volume dashboard). */
+export interface VolumeMetrics {
+  from: string; // yyyy-mm-dd inclusive
+  to: string; // yyyy-mm-dd inclusive
+  /** Series granularity: daily for ranges up to ~2 months, else monthly. */
+  bucket: 'day' | 'month';
+  totals: { count: number; gross_cents: number };
+  series: { bucket: string; count: number; gross_cents: number }[];
+  top_by_value: VendorVolume[];
+  top_by_count: VendorVolume[];
+}
+
 export interface SessionUser {
   email: string;
   name: string;

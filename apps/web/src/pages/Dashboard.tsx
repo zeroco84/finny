@@ -3,7 +3,7 @@ import type { DashboardMetrics } from '@finny/shared';
 import { api } from '../api';
 import { pct } from '../format';
 import { useMeta } from '../meta';
-import { BarRow, EmptyState, TrendLine } from '../components/ui';
+import { BarRow, DashboardSwitch, EmptyState, TrendLine } from '../components/ui';
 
 const FIELD_LABELS: Record<string, string> = {
   vendor_name: 'Vendor',
@@ -40,6 +40,7 @@ export default function DashboardPage() {
     <div className="page">
       <div className="page-head">
         <h1>Accuracy dashboard</h1>
+        <DashboardSwitch active="accuracy" />
       </div>
       <p className="muted">
         AI-vs-human comparisons from every completed review. The spec's go-live gate: 85%+ field accuracy over

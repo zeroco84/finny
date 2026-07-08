@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { SessionUser } from '@finny/shared';
 import { api, ApiError } from './api';
 import logo from './assets/finny-logo.png';
@@ -11,6 +11,7 @@ import RulesPage from './pages/Rules';
 import AlertsPage from './pages/Alerts';
 import ExportsPage from './pages/Exports';
 import DashboardPage from './pages/Dashboard';
+import VolumePage from './pages/Volume';
 import SettingsPage from './pages/Settings';
 import GuidePage from './pages/Guide';
 
@@ -22,6 +23,7 @@ function Badge({ n, tone = 'default' }: { n: number | undefined; tone?: 'default
 function Shell() {
   const { user, settings, overview, signOut } = useMeta();
   const navigate = useNavigate();
+  const location = useLocation();
   return (
     <div className="shell">
       {settings.mode === 'shadow' && (
@@ -36,7 +38,13 @@ function Shell() {
           Finny<span className="wordmark-sub">Accounts Payable</span>
         </button>
         <nav>
-          <NavLink to="/" end>
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              isActive || location.pathname === '/dashboard' ? 'active' : ''
+            }
+            end
+          >
             Dashboard
           </NavLink>
           <NavLink to="/queue">
@@ -65,14 +73,16 @@ function Shell() {
       </header>
       <main>
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
+          {/* Landing page: the Volume dashboard; the in-page slider flips to
+              the accuracy report at /dashboard. */}
+          <Route path="/" element={<VolumePage />} />
+          <Route path="/volume" element={<Navigate to="/" replace />} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/exports" element={<ExportsPage />} />
-          {/* Old bookmarks: /dashboard was the dashboard's home before it moved to / */}
-          <Route path="/dashboard" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

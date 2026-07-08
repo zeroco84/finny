@@ -45,7 +45,7 @@ import {
 import { configuredSageEntities, fetchActiveNominals, fetchSageReference, resolveSageServer } from '../services/sage/hyperaccounts.js';
 import { validateAgainstSage } from '../services/sage/reference.js';
 import { pullSummary, storePulledNominals } from '../services/sage/nominals.js';
-import { dashboardMetrics } from '../services/metrics.js';
+import { dashboardMetrics, volumeMetrics } from '../services/metrics.js';
 import { getApprover, getSettings, listApprovers, updateSettings } from '../services/settings.js';
 import { all, one, run } from '../db/db.js';
 import { newId, nowIso } from '../domain/util.js';
@@ -518,6 +518,31 @@ export function buildRouter(): Router {
   });
 
   // ── Metrics, settings, approvers ──────────────────────────────────────────
+  // Volume dashboard: count + value of invoices over a date range
+  // (inclusive), dated by invoice date with arrival-date fallback.
+  router.get('/metrics/volume', (req, res) => {
+    const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const parsed = z.object({ from: day, to: day }).safeParse({
+      from: req.query.from,
+      to: req.query.to,
+    });
+    if (!parsed.success) {
+      res.status(400).json({ error: 'from and to are required as yyyy-mm-dd' });
+      return;
+    }
+    const { from, to } = parsed.data;
+    const span = (Date.parse(to) - Date.parse(from)) / 86_400_000;
+    if (!(span >= 0)) {
+      res.status(400).json({ error: '"from" must not be after "to"' });
+      return;
+    }
+    if (span > 1100) {
+      res.status(400).json({ error: 'Range is limited to three years' });
+      return;
+    }
+    res.json(volumeMetrics(from, to));
+  });
+
   router.get('/metrics/dashboard', (_req, res) => {
     res.json(dashboardMetrics());
   });

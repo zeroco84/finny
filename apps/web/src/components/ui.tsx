@@ -1,5 +1,26 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { STATUS_LABELS, pct } from '../format';
+
+/**
+ * The slider between the two dashboards. Volume lives at "/" (the landing
+ * page); the accuracy report keeps its old /dashboard address so bookmarks
+ * and the go-live checklist still point somewhere real.
+ */
+export function DashboardSwitch({ active }: { active: 'volume' | 'accuracy' }) {
+  return (
+    <div className="dash-switch" role="tablist" aria-label="Dashboard view">
+      <Link to="/" role="tab" aria-selected={active === 'volume'}
+        className={`dash-switch-opt ${active === 'volume' ? 'dash-switch-active' : ''}`}>
+        Volume
+      </Link>
+      <Link to="/dashboard" role="tab" aria-selected={active === 'accuracy'}
+        className={`dash-switch-opt ${active === 'accuracy' ? 'dash-switch-active' : ''}`}>
+        Accuracy
+      </Link>
+    </div>
+  );
+}
 
 export function StatusChip({ status, shadow }: { status: string; shadow?: boolean }) {
   return (

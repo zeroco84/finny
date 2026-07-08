@@ -547,6 +547,41 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .login-ms { display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; margin-top: 6px; align-self: stretch; }
 .login-card .form-error { text-align: center; }
 
+/* Dashboard slider (Volume <-> Accuracy) */
+.dash-switch {
+  display: inline-flex;
+  background: var(--brand-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.dash-switch-opt {
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.dash-switch-opt:hover { color: var(--brand-strong); }
+.dash-switch-active { background: var(--brand); color: #fff !important; box-shadow: var(--shadow); }
+
+/* Volume dashboard */
+.period-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.period-custom { display: flex; align-items: center; gap: 8px; }
+.period-custom input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; }
+.volume-bar { fill: var(--brand); opacity: 0.55; }
+.volume-bar:hover { opacity: 0.85; }
+.volume-count-line { stroke: var(--accent); stroke-width: 2; }
+.volume-count-dot { fill: var(--accent); }
+.volume-legend { display: flex; gap: 18px; font-size: 0.8rem; color: var(--ink-soft); margin-top: 6px; }
+.legend-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 5px; }
+.legend-bar { background: var(--brand); opacity: 0.55; }
+.legend-line { background: var(--accent); height: 3px; vertical-align: middle; }
+.rank-row .bar-label { width: 172px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Settings → Nominal codes pulled from Sage */
 .nominal-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
 .nominal-row { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 0.9rem; }

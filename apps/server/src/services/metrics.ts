@@ -1,6 +1,80 @@
-import type { DashboardMetrics, FieldAccuracy, VendorMetrics, WeeklyPoint } from '@finny/shared';
+import type {
+  DashboardMetrics,
+  FieldAccuracy,
+  VendorMetrics,
+  VolumeMetrics,
+  WeeklyPoint,
+} from '@finny/shared';
 import { all, one } from '../db/db.js';
 import { isoWeekLabel } from '../domain/util.js';
+
+/**
+ * Volume dashboard: how many invoices, worth how much, over a date range.
+ * Dated by the printed invoice date when extraction found one, falling back
+ * to the arrival date so no document ever drops out. Discarded documents
+ * (statements, spam) are not invoices and are excluded.
+ */
+const EFFECTIVE_DATE = `COALESCE(invoice_date, DATE(received_at))`;
+const VOLUME_BASE = `FROM invoices WHERE status != 'discarded' AND ${EFFECTIVE_DATE} >= ? AND ${EFFECTIVE_DATE} <= ?`;
+
+function eachDay(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function eachMonth(from: string, to: string): string[] {
+  const out: string[] = [];
+  let [y, m] = from.slice(0, 7).split('-').map(Number);
+  const end = to.slice(0, 7);
+  for (;;) {
+    const label = `${y}-${String(m).padStart(2, '0')}`;
+    out.push(label);
+    if (label === end) break;
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+export function volumeMetrics(from: string, to: string): VolumeMetrics {
+  const totals = one<{ n: number; gross: number | null }>(
+    `SELECT COUNT(*) AS n, SUM(gross_cents) AS gross ${VOLUME_BASE}`,
+    from, to,
+  );
+
+  const spanDays = (Date.parse(to) - Date.parse(from)) / 86_400_000;
+  const bucket: VolumeMetrics['bucket'] = spanDays <= 62 ? 'day' : 'month';
+  const bucketExpr = bucket === 'day' ? EFFECTIVE_DATE : `substr(${EFFECTIVE_DATE}, 1, 7)`;
+  const rows = all<{ b: string; n: number; gross: number | null }>(
+    `SELECT ${bucketExpr} AS b, COUNT(*) AS n, SUM(gross_cents) AS gross ${VOLUME_BASE} GROUP BY b ORDER BY b`,
+    from, to,
+  );
+  const byBucket = new Map(rows.map((r) => [String(r.b), r]));
+  const series = (bucket === 'day' ? eachDay(from, to) : eachMonth(from, to)).map((b) => {
+    const r = byBucket.get(b);
+    return { bucket: b, count: r ? Number(r.n) : 0, gross_cents: r ? Number(r.gross ?? 0) : 0 };
+  });
+
+  const topBy = (order: string) =>
+    all<{ vendor: string; n: number; gross: number | null }>(
+      `SELECT COALESCE(vendor_name, '(unknown vendor)') AS vendor, COUNT(*) AS n, SUM(gross_cents) AS gross
+       ${VOLUME_BASE} GROUP BY vendor ORDER BY ${order} LIMIT 5`,
+      from, to,
+    ).map((r) => ({ vendor: r.vendor, count: Number(r.n), gross_cents: Number(r.gross ?? 0) }));
+
+  return {
+    from,
+    to,
+    bucket,
+    totals: { count: totals ? Number(totals.n) : 0, gross_cents: totals ? Number(totals.gross ?? 0) : 0 },
+    series,
+    top_by_value: topBy('gross DESC, n DESC'),
+    top_by_count: topBy('n DESC, gross DESC'),
+  };
+}
 
 function fieldAccuracy(fields: string[]): FieldAccuracy[] {
   const rows = all<{ field: string; n: number; m: number }>(

@@ -95,7 +95,7 @@ apps/server   Express 5 + node:sqlite (WAL) — API, background workers, connect
   src/services/approvals    mock simulator · Graph Teams Approvals scaffold + poller
   src/services/alerts.ts    templates per failure type, immediate email or logged
   src/workers.ts            mail poll · extraction queue · SLA watchdog · approvals poll
-apps/web      React 19 + Vite — queue, review, rules, alerts, Sage, dashboard, settings
+apps/web      React 19 + Vite — queue, review, rules, alerts, Sage, dashboards (accuracy + volume), settings
 packages/shared  one set of domain types used by both
 ```
 
