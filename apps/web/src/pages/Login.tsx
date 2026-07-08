@@ -55,9 +55,11 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
     return (
       <div className="login-wrap">
         <div className="login-card">
-          <img src={logo} alt="Finny" className="login-logo" />
-          <h1 className="wordmark login-mark">Finny</h1>
-          <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
+          <div className="login-head">
+            <img src={logo} alt="Finny" className="login-logo" />
+            <h1 className="wordmark login-mark">Finny</h1>
+            <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
+          </div>
           {error && <p className="form-error">{error}</p>}
           <a className="btn btn-primary login-ms" href="/api/auth/entra/login">
             <MsLogo /> Sign in with Microsoft 365
@@ -71,9 +73,11 @@ export default function Login({ onSignedIn }: { onSignedIn: (u: SessionUser) => 
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <img src={logo} alt="Finny" className="login-logo" />
-        <h1 className="wordmark login-mark">Finny</h1>
-        <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
+        <div className="login-head">
+          <img src={logo} alt="Finny" className="login-logo" />
+          <h1 className="wordmark login-mark">Finny</h1>
+          <p className="login-tag">Finance Invoice Notification &amp; Navigation for You</p>
+        </div>
         <label>
           Work email
           <input
