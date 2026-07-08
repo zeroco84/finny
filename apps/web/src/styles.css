@@ -122,6 +122,13 @@ main { flex: 1; }
   font-size: 0.9rem;
   cursor: pointer;
   font-family: inherit;
+  /* Buttons and <a class="btn"> render identically and never wrap mid-label */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1.25;
 }
 .btn:hover { border-color: var(--brand); }
 .btn:disabled { opacity: 0.5; cursor: default; }
@@ -477,6 +484,8 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
   place-items: center;
 }
 
+.guide-subhead { margin: 26px 0 4px; font-size: 1.05rem; color: var(--brand-strong); }
+
 .term-row {
   display: grid;
   grid-template-columns: 172px 1fr;
@@ -537,3 +546,15 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .login-note { font-size: 0.78rem; color: var(--ink-soft); margin: 4px 0 0; text-align: center; }
 .login-ms { display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; margin-top: 6px; align-self: stretch; }
 .login-card .form-error { text-align: center; }
+
+/* Settings → Nominal codes pulled from Sage */
+.nominal-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.nominal-row { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.nominal-row:last-child { border-bottom: none; }
+.nominal-code { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--brand-strong); display: inline-block; min-width: 56px; }
+
+/* Settings → Check against Sage */
+.ref-check h3 { margin: 12px 0 4px; font-size: 0.9rem; }
+.ref-list { list-style: none; margin: 0; padding: 0; }
+.ref-list li { padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ref-list li:last-child { border-bottom: none; }

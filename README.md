@@ -204,6 +204,18 @@ transaction (the API requires one; Sage keeps it). The CSV is still written as t
   alert and leave a per-batch "Send to Sage" retry that sends only what's missing.
   (The CSV audit copy keeps the refs as first generated; the invoice history is authoritative
   when a ref was reassigned.)
+- **The coding list IS Sage's chart of accounts:** the AP Lead picks a company in Settings and
+  pulls its **active nominal codes** (`GET /api/nominal`, inactive codes filtered out); the union
+  across pulled entities becomes the coding list used everywhere — extraction, learned rules, the
+  review dropdown, and the export's N/C column — so nobody maintains a hand-typed copy. Re-pull
+  any time to pick up chart changes; codes retired in Sage drop out. Until a server is
+  configured, the seeded editable list applies (which is how the offline demo works).
+- **Settings validate against the live Sage company:** the "Check against Sage" panel pulls tax
+  codes, departments, and projects (`GET /api/taxCode`, `/api/department`,
+  `POST /api/searchProject`) alongside the nominals and checks every mapping — tax codes get
+  their live rates compared, and active Sage projects Finny doesn't know are offered as
+  one-click imports. Read-only, lead-only, and available as soon as a server is configured —
+  even before `SAGE_PROVIDER` flips to one-touch mode.
 - **Confirm with Hyperext before go-live:** the API-key **header name** (docs say "API Key,
   collection-level" without naming it — `SAGE_API_KEY_HEADER` defaults to `x-api-key`), and that
   the tokenized document links (served by Finny at `APP_URL`) are reachable from wherever Sage
@@ -217,7 +229,8 @@ The export mirrors the team's "Invoices to be posted" workbook column-for-column
 configurable in Settings, stamped onto each invoice at export), `Ex Ref` carries the PO, `Dept`
 comes from the invoice's project (each project holds its Sage department number), the supplier's
 invoice number is composed into `Details` (`Inv4590 - Vendor (CODE/PO 8749)`), and zero-VAT lines
-post with the 0% tax code (T9 by default). Nominal codes (per category), tax codes, fallback
+post with the 0% tax code (T9 by default). Nominal codes (pulled from Sage per entity, or
+hand-maintained until connected), tax codes, fallback
 dept, and the next Ref number are all editable in Settings — validate one small batch against the
 live Sage install before relying on it. Supplier account refs are suggested from the vendor name
 and editable per invoice; Finny reuses the last-used ref per vendor.

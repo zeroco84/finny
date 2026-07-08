@@ -41,7 +41,9 @@ import {
   sendBatchToSage,
   syncPostingSequence,
 } from '../services/sage.js';
-import { configuredSageEntities } from '../services/sage/hyperaccounts.js';
+import { configuredSageEntities, fetchActiveNominals, fetchSageReference, resolveSageServer } from '../services/sage/hyperaccounts.js';
+import { validateAgainstSage } from '../services/sage/reference.js';
+import { pullSummary, storePulledNominals } from '../services/sage/nominals.js';
 import { dashboardMetrics } from '../services/metrics.js';
 import { getApprover, getSettings, listApprovers, updateSettings } from '../services/settings.js';
 import { all, one, run } from '../db/db.js';
@@ -185,7 +187,10 @@ export function buildRouter(): Router {
       email_provider: emailProviderName(),
       auth_provider: config.authProvider,
       sage_provider: config.sage.provider,
-      sage_entities: config.sage.provider === 'hyperaccounts' ? configuredSageEntities() : [],
+      // Which entities have a HyperAccounts server configured — independent of
+      // the provider switch, because the Settings reference check (read-only)
+      // is useful before one-touch posting goes live.
+      sage_entities: configuredSageEntities(),
       mail_last_poll: getStatus('mail_last_poll'),
       mail_last_error: getStatus('mail_last_error'),
       approvals_last_poll: getStatus('approvals_last_poll'),
@@ -422,6 +427,57 @@ export function buildRouter(): Router {
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Export failed' });
     }
+  });
+
+  // Pull the live Sage company's reference data (nominals, tax codes,
+  // departments, projects) and validate the Settings mappings against it.
+  // Read-only against Sage; works as soon as a HyperAccounts server is
+  // configured, even before SAGE_PROVIDER flips to one-touch mode.
+  router.get('/sage/reference', requireLead, async (req, res) => {
+    const entity = typeof req.query.entity === 'string' && req.query.entity !== '' ? req.query.entity : null;
+    const server = resolveSageServer(entity);
+    if (!server) {
+      res.json({ configured: false });
+      return;
+    }
+    try {
+      const reference = await fetchSageReference(server);
+      res.json({
+        configured: true,
+        entity: server.entity,
+        counts: {
+          nominals: reference.nominals.length,
+          tax_codes: reference.taxCodes.length,
+          departments: reference.departments.length,
+          projects: reference.projects.length,
+        },
+        validation: validateAgainstSage(getSettings(), reference),
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Sage reference pull failed' });
+    }
+  });
+
+  // Adopt an entity's ACTIVE nominal codes from Sage as the coding list —
+  // the union across pulled entities becomes settings.categories, so nobody
+  // maintains a hand-typed copy of the chart of accounts.
+  router.post('/sage/nominals/pull', requireLead, async (req, res) => {
+    const entity = typeof req.body?.entity === 'string' && req.body.entity !== '' ? req.body.entity : null;
+    const server = resolveSageServer(entity);
+    if (!server) {
+      res.status(400).json({ error: `No HyperAccounts server configured for "${entity ?? 'default'}" — set SAGE_API_URL or SAGE_ENTITY_SERVERS` });
+      return;
+    }
+    try {
+      const nominals = await fetchActiveNominals(server);
+      const categories = storePulledNominals(entity ?? server.entity, nominals, req.user!.email);
+      res.json({ entity: entity ?? server.entity, pulled: nominals.length, categories });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Nominal pull failed' });
+    }
+  });
+  router.get('/sage/nominals', (_req, res) => {
+    res.json({ summary: pullSummary() });
   });
 
   // Retry/one-touch send for a batch that didn't fully post.

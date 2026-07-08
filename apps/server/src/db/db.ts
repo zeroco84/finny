@@ -28,6 +28,13 @@ function migrate(database: DatabaseSync): void {
   ensureColumn('invoices', 'sage_tx_number', 'TEXT');
   ensureColumn('invoices', 'sage_posted_at', 'TEXT');
   ensureColumn('sage_batches', 'entity', 'TEXT');
+  database.exec(`CREATE TABLE IF NOT EXISTS sage_nominals (
+    entity TEXT NOT NULL,
+    account_ref TEXT NOT NULL,
+    name TEXT NOT NULL,
+    pulled_at TEXT NOT NULL,
+    PRIMARY KEY (entity, account_ref)
+  )`);
 }
 
 export function getDb(): DatabaseSync {

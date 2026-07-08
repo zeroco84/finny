@@ -173,6 +173,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- Active nominal codes pulled from each entity's Sage company (the coding
+-- list is Sage's, not hand-maintained). Union flattens into settings.categories.
+CREATE TABLE IF NOT EXISTS sage_nominals (
+  entity TEXT NOT NULL,
+  account_ref TEXT NOT NULL,
+  name TEXT NOT NULL,
+  pulled_at TEXT NOT NULL,
+  PRIMARY KEY (entity, account_ref)
+);
+
 CREATE TABLE IF NOT EXISTS system_status (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

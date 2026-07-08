@@ -19,6 +19,20 @@ export class ApiError extends Error {
   }
 }
 
+/** GET /sage/reference — live-Sage validation of the Settings mappings. */
+export interface SageReferenceCheck {
+  configured: boolean;
+  entity?: string;
+  counts?: { nominals: number; tax_codes: number; departments: number; projects: number };
+  validation?: {
+    categories: { name: string; nominal_code: string; ok: boolean; sage_name: string | null; inactive: boolean }[];
+    tax_codes: { rate: string | null; code: string; ok: boolean; rate_matches: boolean; sage_rate: number | null; sage_description: string | null }[];
+    fallback_dept_ok: boolean;
+    projects: { code: string; name: string; dept: string; in_sage: boolean; dept_ok: boolean; sage_name: string | null }[];
+    missing_projects: { reference: string; name: string }[];
+  };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: init?.body && !(init.body instanceof Blob) ? { 'Content-Type': 'application/json' } : undefined,
@@ -101,6 +115,14 @@ export const api = {
       };
     }>(`/exports/${id}/send`),
   markImported: (id: string) => post<SageBatch>(`/exports/${id}/mark-imported`),
+  sageReference: (entity?: string) =>
+    get<SageReferenceCheck>(`/sage/reference${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`),
+  sageNominals: () => get<{ summary: { entity: string; count: number; pulled_at: string }[] }>('/sage/nominals'),
+  pullNominals: (entity?: string) =>
+    post<{ entity: string; pulled: number; categories: { name: string; nominal_code: string }[] }>(
+      '/sage/nominals/pull',
+      { entity: entity ?? '' },
+    ),
 
   dashboard: () => get<DashboardMetrics>('/metrics/dashboard'),
 

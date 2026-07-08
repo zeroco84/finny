@@ -271,6 +271,50 @@ export async function findDuplicateInSage(
   );
 }
 
+// ── Reference data (Settings "Check against Sage") ──────────────────────────
+
+export interface SageNominal { accountRef: string; name: string; inactiveFlag: number }
+export interface SageTaxCode { index: number; description: string; rate: number }
+export interface SageDepartment { reference: string; name: string }
+export interface SageProjectRecord { reference: string; name: string; statusID: string }
+
+export interface SageReference {
+  nominals: SageNominal[];
+  taxCodes: SageTaxCode[];
+  departments: SageDepartment[];
+  projects: SageProjectRecord[];
+}
+
+/** The entity's ACTIVE nominal codes — the coding list Finny adopts. */
+export async function fetchActiveNominals(server: SageServer): Promise<SageNominal[]> {
+  const out = await haFetch<{ results?: SageNominal[] }>(server, '/api/nominal/');
+  return (out.results ?? []).filter((n) => n.inactiveFlag === 0);
+}
+
+/**
+ * Pull the company's live reference lists — chart of accounts, tax codes,
+ * departments, projects — so Finny's mappings can be validated against what
+ * Sage actually contains instead of being typed from memory.
+ */
+export async function fetchSageReference(server: SageServer): Promise<SageReference> {
+  const [nominals, taxCodes, departments, projects] = await Promise.all([
+    haFetch<{ results?: SageNominal[] }>(server, '/api/nominal/'),
+    haFetch<{ results?: SageTaxCode[] }>(server, '/api/taxCode'),
+    haFetch<{ results?: SageDepartment[] }>(server, '/api/department'),
+    // Empty filter list = no constraints; returns the PROJECT table.
+    haFetch<{ results?: SageProjectRecord[] }>(server, '/api/searchProject', {
+      method: 'POST',
+      body: JSON.stringify([]),
+    }),
+  ]);
+  return {
+    nominals: nominals.results ?? [],
+    taxCodes: taxCodes.results ?? [],
+    departments: departments.results ?? [],
+    projects: projects.results ?? [],
+  };
+}
+
 /**
  * Preflight 3 — sequencing: the highest Inv-series PI reference already in
  * Sage (posted by anyone), so Finny's counter can fast-forward past manual

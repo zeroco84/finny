@@ -196,7 +196,7 @@ export default function InvoiceDetailPage() {
     <div className="page page-wide">
       <div className="page-head">
         <div>
-          <Link to="/" className="crumb">← Queue</Link>
+          <Link to="/queue" className="crumb">← Queue</Link>
           <h1>
             {detail.vendor_name ?? 'Unknown vendor'}{' '}
             <span className="muted">{detail.invoice_ref ?? ''}</span>
@@ -332,6 +332,11 @@ export default function InvoiceDetailPage() {
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
                 >
                   <option value="">— choose —</option>
+                  {/* Keep the stored value selectable even if the coding list
+                      has since been re-pulled from Sage under different names. */}
+                  {form.category && !settings.categories.some((c) => c.name === form.category) && (
+                    <option value={form.category}>{form.category} (no longer in the list)</option>
+                  )}
                   {settings.categories.map((c) => (
                     <option key={c.name} value={c.name}>{c.name}</option>
                   ))}

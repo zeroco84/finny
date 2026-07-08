@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ConnectorStatus, Settings } from '@finny/shared';
-import { api } from '../api';
+import { api, type SageReferenceCheck } from '../api';
 import { dateTime } from '../format';
 import { useMeta } from '../meta';
 import { Banner } from '../components/ui';
@@ -14,10 +14,37 @@ export default function SettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newApprover, setNewApprover] = useState({ name: '', email: '' });
+  const [refEntity, setRefEntity] = useState('');
+  const [refCheck, setRefCheck] = useState<SageReferenceCheck | null>(null);
+  const [refBusy, setRefBusy] = useState(false);
+  const [nominalSummary, setNominalSummary] = useState<{ entity: string; count: number; pulled_at: string }[]>([]);
+  const [pullEntity, setPullEntity] = useState(settings.entities[0] ?? '');
+  const [pullBusy, setPullBusy] = useState(false);
+
+  const sageConnected = (status?.sage_entities.length ?? 0) > 0;
+  const hasPulled = nominalSummary.length > 0;
 
   useEffect(() => {
     void api.status().then(setStatus);
+    void api.sageNominals().then((r) => setNominalSummary(r.summary)).catch(() => undefined);
   }, []);
+
+  async function pullNominals() {
+    setPullBusy(true);
+    setError(null);
+    try {
+      const res = await api.pullNominals(pullEntity || undefined);
+      setDraft((d) => ({ ...d, categories: res.categories }));
+      setNominalSummary((await api.sageNominals()).summary);
+      await refreshMeta();
+      setNotice(`Pulled ${res.pulled} active nominal codes from ${res.entity} — the coding list now has ${res.categories.length} codes.`);
+      setTimeout(() => setNotice(null), 6000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nominal pull failed');
+    } finally {
+      setPullBusy(false);
+    }
+  }
 
   async function save(patch: Partial<Settings>, message = 'Saved.') {
     setError(null);
@@ -29,6 +56,18 @@ export default function SettingsPage() {
       setTimeout(() => setNotice(null), 4000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
+    }
+  }
+
+  async function runReferenceCheck() {
+    setRefBusy(true);
+    setError(null);
+    try {
+      setRefCheck(await api.sageReference(refEntity === '*' ? undefined : refEntity || undefined));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sage reference pull failed');
+    } finally {
+      setRefBusy(false);
     }
   }
 
@@ -122,43 +161,86 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
-        <h2>Categories → Sage nominal codes</h2>
-        <table className="table table-compact">
-          <thead><tr><th>Category</th><th>Nominal code</th><th /></tr></thead>
-          <tbody>
-            {draft.categories.map((c, i) => (
-              <tr key={i}>
-                <td><input disabled={dis} value={c.name} onChange={(e) => {
-                  const categories = [...draft.categories];
-                  categories[i] = { ...c, name: e.target.value };
-                  setDraft({ ...draft, categories });
-                }} /></td>
-                <td><input disabled={dis} value={c.nominal_code} onChange={(e) => {
-                  const categories = [...draft.categories];
-                  categories[i] = { ...c, nominal_code: e.target.value };
-                  setDraft({ ...draft, categories });
-                }} /></td>
-                <td>{isLead && (
-                  <button className="btn btn-small btn-danger-ghost"
-                    onClick={() => setDraft({ ...draft, categories: draft.categories.filter((_, j) => j !== i) })}>
-                    Remove
-                  </button>
-                )}</td>
-              </tr>
+        <h2>Nominal codes (the coding list)</h2>
+        {sageConnected && (
+          <>
+            <p className="muted small">
+              The coding list comes straight from Sage: pull each company's <strong>active</strong>{' '}
+              nominal codes and the combined list below is what invoices are coded to — no
+              hand-maintained mapping.
+            </p>
+            {isLead && (
+              <div className="row-actions" style={{ marginBottom: 8 }}>
+                <select value={pullEntity} onChange={(e) => setPullEntity(e.target.value)}>
+                  {settings.entities.map((e) => <option key={e} value={e}>{e}</option>)}
+                  <option value="">Default server</option>
+                </select>
+                <button className="btn btn-small btn-primary" disabled={pullBusy} onClick={() => void pullNominals()}>
+                  {pullBusy ? 'Pulling…' : 'Pull nominals from Sage'}
+                </button>
+              </div>
+            )}
+            {nominalSummary.length > 0 && (
+              <p className="muted small">
+                {nominalSummary.map((s) => `${s.entity}: ${s.count} codes (${dateTime(s.pulled_at)})`).join(' · ')}
+              </p>
+            )}
+          </>
+        )}
+        {hasPulled ? (
+          <div className="nominal-list">
+            {draft.categories.map((c) => (
+              <div key={c.nominal_code} className="nominal-row">
+                <span className="nominal-code">{c.nominal_code}</span> {c.name}
+              </div>
             ))}
-          </tbody>
-        </table>
-        {isLead && (
-          <div className="row-actions">
-            <button className="btn btn-small"
-              onClick={() => setDraft({ ...draft, categories: [...draft.categories, { name: '', nominal_code: '' }] })}>
-              Add category
-            </button>
-            <button className="btn btn-small btn-primary"
-              onClick={() => void save({ categories: draft.categories.filter((c) => c.name && c.nominal_code) })}>
-              Save categories
-            </button>
           </div>
+        ) : (
+          <>
+            {!sageConnected && (
+              <p className="muted small">
+                Maintained by hand until a HyperAccounts server is configured — then the list is
+                pulled straight from each company's Sage and this editor retires.
+              </p>
+            )}
+            <table className="table table-compact">
+              <thead><tr><th>Category</th><th>Nominal code</th><th /></tr></thead>
+              <tbody>
+                {draft.categories.map((c, i) => (
+                  <tr key={i}>
+                    <td><input disabled={dis} value={c.name} onChange={(e) => {
+                      const categories = [...draft.categories];
+                      categories[i] = { ...c, name: e.target.value };
+                      setDraft({ ...draft, categories });
+                    }} /></td>
+                    <td><input disabled={dis} value={c.nominal_code} onChange={(e) => {
+                      const categories = [...draft.categories];
+                      categories[i] = { ...c, nominal_code: e.target.value };
+                      setDraft({ ...draft, categories });
+                    }} /></td>
+                    <td>{isLead && (
+                      <button className="btn btn-small btn-danger-ghost"
+                        onClick={() => setDraft({ ...draft, categories: draft.categories.filter((_, j) => j !== i) })}>
+                        Remove
+                      </button>
+                    )}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isLead && (
+              <div className="row-actions">
+                <button className="btn btn-small"
+                  onClick={() => setDraft({ ...draft, categories: [...draft.categories, { name: '', nominal_code: '' }] })}>
+                  Add category
+                </button>
+                <button className="btn btn-small btn-primary"
+                  onClick={() => void save({ categories: draft.categories.filter((c) => c.name && c.nominal_code) })}>
+                  Save categories
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -285,6 +367,127 @@ export default function SettingsPage() {
           })}>
             Save Sage mapping
           </button>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Check against Sage</h2>
+        {status && status.sage_entities.length === 0 ? (
+          <p className="muted">
+            Not connected yet. Once a HyperAccounts server is configured (<code>SAGE_API_URL</code> or{' '}
+            <code>SAGE_ENTITY_SERVERS</code>), this pulls the live chart of accounts, tax codes,
+            departments and projects straight from Sage and validates every mapping above — no more
+            typing codes from memory.
+          </p>
+        ) : (
+          <>
+            <p className="muted">
+              Pulls the live reference data from the Sage company and checks the mappings above
+              against it. Read-only — nothing in Sage changes.
+            </p>
+            <div className="row-actions" style={{ marginBottom: 10 }}>
+              {status && status.sage_entities.filter((e) => e !== '*').length > 0 && (
+                <select value={refEntity} onChange={(e) => setRefEntity(e.target.value)}>
+                  <option value="*">Default server</option>
+                  {status.sage_entities.filter((e) => e !== '*').map((e) => (
+                    <option key={e} value={e}>{e}</option>
+                  ))}
+                </select>
+              )}
+              {isLead && (
+                <button className="btn btn-small btn-primary" disabled={refBusy} onClick={() => void runReferenceCheck()}>
+                  {refBusy ? 'Checking…' : 'Check against Sage'}
+                </button>
+              )}
+            </div>
+            {refCheck && !refCheck.configured && (
+              <p className="muted">No HyperAccounts server is configured for that entity.</p>
+            )}
+            {refCheck?.configured && refCheck.validation && (
+              <div className="ref-check">
+                <p className="muted small">
+                  Pulled from Sage ({refCheck.entity}): {refCheck.counts!.nominals} nominal codes,{' '}
+                  {refCheck.counts!.tax_codes} tax codes, {refCheck.counts!.departments} departments,{' '}
+                  {refCheck.counts!.projects} projects.
+                </p>
+                <h3>Categories</h3>
+                <ul className="ref-list">
+                  {refCheck.validation.categories.map((c) => (
+                    <li key={c.name}>
+                      {c.name} → {c.nominal_code}{' '}
+                      {c.ok ? (
+                        <span className="chip status-approved">✓ {c.sage_name}</span>
+                      ) : c.inactive ? (
+                        <span className="chip status-needs_review">inactive in Sage: {c.sage_name}</span>
+                      ) : (
+                        <span className="chip status-rejected">not in Sage</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <h3>Tax codes</h3>
+                <ul className="ref-list">
+                  {refCheck.validation.tax_codes.map((t) => (
+                    <li key={`${t.rate ?? 'default'}`}>
+                      {t.rate === null ? 'Default' : `${t.rate}%`} → {t.code}{' '}
+                      {!t.ok ? (
+                        <span className="chip status-rejected">not in Sage</span>
+                      ) : t.rate_matches ? (
+                        <span className="chip status-approved">✓ {t.sage_rate}% {t.sage_description}</span>
+                      ) : (
+                        <span className="chip status-needs_review">Sage has {t.sage_rate}% — expected {t.rate}%</span>
+                      )}
+                    </li>
+                  ))}
+                  <li>
+                    Fallback dept {draft.sage_department}{' '}
+                    {refCheck.validation.fallback_dept_ok ? (
+                      <span className="chip status-approved">✓ exists</span>
+                    ) : (
+                      <span className="chip status-rejected">not in Sage</span>
+                    )}
+                  </li>
+                </ul>
+                <h3>Projects</h3>
+                <ul className="ref-list">
+                  {refCheck.validation.projects.map((p) => (
+                    <li key={p.code}>
+                      {p.code} ({p.name}){' '}
+                      {p.in_sage ? (
+                        <span className="chip status-approved">✓ {p.sage_name}</span>
+                      ) : (
+                        <span className="chip status-rejected">not in Sage</span>
+                      )}{' '}
+                      {!p.dept_ok && <span className="chip status-needs_review">dept {p.dept} not in Sage</span>}
+                    </li>
+                  ))}
+                </ul>
+                {refCheck.validation.missing_projects.length > 0 && (
+                  <>
+                    <h3>In Sage but not in Finny</h3>
+                    <ul className="ref-list">
+                      {refCheck.validation.missing_projects.map((m) => (
+                        <li key={m.reference}>
+                          {m.reference} ({m.name}){' '}
+                          {isLead && (
+                            <button className="btn btn-small" onClick={() => {
+                              setDraft({
+                                ...draft,
+                                projects: [...draft.projects, { name: m.name, code: m.reference, dept: draft.sage_department }],
+                              });
+                              setNotice(`Added ${m.reference} to the projects list above — set its Dept, then press "Save entities & projects".`);
+                            }}>
+                              Add to Finny
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

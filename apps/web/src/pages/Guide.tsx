@@ -60,6 +60,7 @@ export default function GuidePage() {
   const [active, setActive] = useState('loop');
   const [connector, setConnector] = useState<ConnectorStatus | null>(null);
   const oneTouchSage = connector?.sage_provider === 'hyperaccounts';
+  const sageConnected = (connector?.sage_entities.length ?? 0) > 0;
 
   useEffect(() => {
     void api.status().then(setConnector).catch(() => undefined);
@@ -190,8 +191,11 @@ export default function GuidePage() {
               Overheads are fine as “— none —”.
             </Term>
             <Term label="Category & approver">
-              Where the cost sits and who signs it off. The green rationale box explains the proposal —
-              e.g. <em>“Learned rule: matched 14/15 times”</em>. Your choice here is what teaches Finny.
+              Where the cost sits and who signs it off. The category list is Sage's own chart of
+              accounts once the connection is set up (pulled per company by the <Lead />), so what
+              you pick here is exactly the nominal code the posting will carry. The green rationale
+              box explains the proposal — e.g. <em>“Learned rule: matched 14/15 times”</em>. Your
+              choice here is what teaches Finny.
             </Term>
             <Term label="Sage supplier A/C">
               The supplier's account code in Sage. Finny suggests one and reuses the vendor's last-used
@@ -297,6 +301,52 @@ export default function GuidePage() {
               A mistake found after posting is fixed in Sage as today, and the
               mappings (nominals, tax codes, depts, next Ref) live in Settings (<Lead />).
             </p>
+
+            <h3 className="guide-subhead">Every conversation Finny has with Sage</h3>
+            <p className="muted">
+              {sageConnected || oneTouchSage
+                ? 'The complete list — there is nothing else. Everything is read-only except the posting itself.'
+                : 'Not connected yet: today Finny only produces CSV files and never talks to Sage directly. Once the connection is configured, these are the only conversations it has:'}
+            </p>
+            <Term label={<>Pulling the coding list <span className="chip status-approved">read-only</span></>}>
+              Settings → Nominal codes (<Lead />): pick a company and Finny reads its chart of
+              accounts, keeping only <strong>active</strong> codes. The combined list across our
+              companies becomes the category dropdown everywhere. Re-pull after codes change in
+              Sage — retired codes drop out automatically.
+            </Term>
+            <Term label={<>Checking the mappings <span className="chip status-approved">read-only</span></>}>
+              Settings → Check against Sage (<Lead />): Finny reads Sage's tax codes (with their
+              live VAT rates), departments and project list, then flags anything that doesn't line
+              up — a T-code whose rate differs, a dept that doesn't exist, a project Sage has that
+              Finny doesn't (offered as one-click adds). Nothing in Sage changes.
+            </Term>
+            <Term label={<>Keeping the numbering in step <span className="chip status-approved">read-only</span></>}>
+              When you press Send to Sage, before any refs are assigned, Finny looks up the highest
+              Inv-number already in Sage. If someone has been posting by hand past Finny's counter,
+              the sequence jumps over theirs — audited, with a heads-up alert, and no numbers collide.
+            </Term>
+            <Term label={<>Guarding each invoice <span className="chip status-approved">read-only</span></>}>
+              Just before posting each invoice, two lookups: <em>is our ref already in there?</em>{' '}
+              (a previous send that crashed mid-way is adopted rather than posted twice; a manual
+              posting squatting on the ref makes Finny take a fresh number) — and <em>has someone
+              already keyed this same invoice by hand?</em> (same supplier account, invoice number
+              and amount → Finny links to that transaction instead of creating a duplicate, and
+              alerts you to verify).
+            </Term>
+            <Term label={<>Posting the invoice <span className="chip status-needs_review">the only write</span></>}>
+              One purchase invoice is created in the right company's ledger — supplier A/C, our
+              Inv-ref, nominal code, dept, project ref, net/VAT split, and a secure link to the
+              invoice document attached to the transaction. Sage's transaction number comes back
+              and is stamped on the invoice's history in Finny.
+            </Term>
+            <Term label={<>Retrying a batch <span className="chip status-approved">reads first</span></>}>
+              A retry re-runs all the checks above and sends <strong>only what's missing</strong>.
+              Invoices that already carry a Sage transaction number are never sent again.
+            </Term>
+            <Callout>
+              Sage stays the source of truth: Finny reads before every write, the posting itself is
+              the only thing it ever creates, and it never edits or deletes anything in Sage.
+            </Callout>
           </Chapter>
 
           <Chapter n={8} id="alerts" title="Alerts">
@@ -329,13 +379,15 @@ export default function GuidePage() {
             <p>
               Everything configurable lives here, managed by the <Lead />: shadow/live mode, the
               confidence threshold and review SLA, alert recipients, rule apply-modes, legal entities,
-              projects with their Sage dept numbers, categories → nominal codes, VAT → tax codes, the
-              fallback dept and the next posting Ref number, and the approving-manager list.
+              projects with their Sage dept numbers, the nominal-code list (pulled per company from
+              Sage once connected — hand-kept only until then), VAT → tax codes, the fallback dept
+              and the next posting Ref number, and the approving-manager list.
               {user.role !== 'lead' && ' Settings are read-only for processors — ask the AP Lead.'}
             </p>
             <Callout tone="amber">
-              Before the first real import: match the nominal codes, tax codes, depts and the Ref sequence
-              to the live Sage configuration.
+              Before the first real import: pull each company's nominal codes and run
+              “Check against Sage” so the tax codes, depts, projects and the Ref sequence are proven
+              against the live Sage configuration rather than typed from memory.
             </Callout>
           </Chapter>
 

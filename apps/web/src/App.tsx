@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import type { SessionUser } from '@finny/shared';
 import { api, ApiError } from './api';
 import logo from './assets/finny-logo.png';
@@ -37,6 +37,9 @@ function Shell() {
         </button>
         <nav>
           <NavLink to="/" end>
+            Dashboard
+          </NavLink>
+          <NavLink to="/queue">
             Queue <Badge n={overview?.counts.needs_review} />
           </NavLink>
           <NavLink to="/rules">
@@ -48,7 +51,6 @@ function Shell() {
           <NavLink to="/alerts">
             Alerts <Badge n={overview?.counts.open_alerts} tone="alert" />
           </NavLink>
-          <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/settings">Settings</NavLink>
           <NavLink to="/guide">Guide</NavLink>
         </nav>
@@ -63,15 +65,17 @@ function Shell() {
       </header>
       <main>
         <Routes>
-          <Route path="/" element={<Queue />} />
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/queue" element={<Queue />} />
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/exports" element={<ExportsPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
+          {/* Old bookmarks: /dashboard was the dashboard's home before it moved to / */}
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/guide" element={<GuidePage />} />
-          <Route path="*" element={<Queue />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
