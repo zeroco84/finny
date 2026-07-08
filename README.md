@@ -1,6 +1,6 @@
 # Finny — Finance Invoice Notification & Navigation for You
 
-Meadowvale's AP intake tool: invoices arrive in the shared mailbox, AI extracts and routes them,
+An accounts-payable intake tool: invoices arrive in a shared mailbox, AI extracts and routes them,
 a human confirms once, and Finny produces the Sage 50 import batch and the Teams approval request.
 Every correction teaches an inspectable rule; every failure alerts a named human immediately.
 
@@ -125,7 +125,7 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
    ReadWrite because Finny marks processed messages read; if you'd rather grant read-only, use
    `Mail.Read` and set `GRAPH_MARK_READ=false`.
 2. Application permissions cover **every mailbox in the tenant** until scoped: restrict the app
-   to `apadmin@example.com` with an
+   to the AP mailbox with an
    [application access policy](https://learn.microsoft.com/en-us/graph/auth-limit-mailbox-access)
    (Exchange Online PowerShell: mail-enabled security group containing the mailbox +
    `New-ApplicationAccessPolicy -AccessRight RestrictAccess`, then
@@ -162,7 +162,10 @@ is auth-provider-agnostic, and dev login is disabled. Setup:
 3. Set `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` (they fall back to the
    `GRAPH_*` values, so if the mailbox is wired, just add the redirect URI) and
    `AUTH_PROVIDER=entra`. The server refuses to boot if any are missing — dev login never
-   silently takes over on a live deploy.
+   silently takes over on a live deploy. **Custom domain on Render:** also set
+   `APP_URL=https://<your-domain>` — otherwise Finny derives the callback (and every other
+   absolute link) from `RENDER_EXTERNAL_URL`, which stays on `.onrender.com` and Entra rejects
+   it with `AADSTS50011` (redirect URI mismatch).
 4. `FINNY_LEAD_EMAILS=amy@example.com,rory@example.com` — these sign in as **AP Lead**;
    everyone else is a processor.
 5. **Who can sign in:** the tenant-specific endpoint already limits sign-in to your tenant. To
