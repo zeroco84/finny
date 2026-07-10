@@ -197,6 +197,12 @@ is auth-provider-agnostic, and dev login is disabled. Setup:
 Cookies are marked `Secure` automatically when `APP_URL` is https. Sign-out clears Finny's
 session but not the Microsoft session — the next sign-in is usually silent SSO.
 
+**Custom domain behind a CDN (Cloudflare):** Finny is a dynamic, authenticated app — do **not**
+cache it at the edge. The server sends `Cache-Control: no-store` on every `/api/*` response, but
+a Cloudflare **"Cache Everything"** rule ignores origin headers and will serve a stale `/api/me`
+(so a signed-out user still looks signed in) and a stale team list. Add a **Cache Rule → Bypass
+cache** for the app's hostname (or at least for `/api/*`), then Purge Everything once.
+
 ### One-touch "Send to Sage" (HyperAccounts API)
 
 With `SAGE_PROVIDER=hyperaccounts`, generating a batch **posts each invoice straight into Sage 50**

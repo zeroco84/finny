@@ -77,6 +77,16 @@ export function buildRouter(): Router {
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
 
+  // API responses are per-user and authenticated — never cacheable. Without
+  // this, a caching layer in front (e.g. a Cloudflare "Cache Everything" rule
+  // on a custom domain) can serve a stale /api/me, leaving a signed-out user
+  // shown as still signed in, or an old role/team list. `no-store` tells every
+  // cache — browser and proxy — not to keep the response at all.
+  router.use((_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
+
   // ── Health & auth ──────────────────────────────────────────────────────────
   router.get('/health', (_req, res) => {
     res.json({ ok: true, mode: getSettings().mode });
