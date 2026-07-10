@@ -24,6 +24,9 @@ export function createApp(): express.Express {
     app.use(express.static(webDist));
     app.use((req, res, next) => {
       if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+      // The SPA shell must always revalidate so a cached copy can't pin an old
+      // bundle; the hashed assets it references stay cacheable.
+      res.set('Cache-Control', 'no-cache');
       res.sendFile(path.join(webDist, 'index.html'));
     });
   }
