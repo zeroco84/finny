@@ -282,3 +282,16 @@ export function seedTeam(): void {
     }
   }
 }
+
+/**
+ * Self-heal a deployment that seeded the sample directory before it ran under
+ * real SSO (an earlier build fell back to `mock` when no group id was set).
+ * example.com is RFC-reserved, so under real SSO these rows can only be our own
+ * dev samples — never a tenant user. No-op in dev, where the samples are wanted.
+ * Removing the sample AP Leads also lets the first-real-user bootstrap work.
+ */
+export function purgeSampleDirectory(): void {
+  if (directoryMode() !== 'graph') return;
+  run("DELETE FROM team_members WHERE email LIKE '%@example.com'");
+  run("DELETE FROM approvers WHERE source = 'graph' AND email LIKE '%@example.com'");
+}
