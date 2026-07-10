@@ -1,5 +1,7 @@
 # Finny — Finance Invoice Notification & Navigation for You
 
+[![CI](https://github.com/zeroco84/finny/actions/workflows/ci.yml/badge.svg)](https://github.com/zeroco84/finny/actions/workflows/ci.yml)
+
 An accounts-payable intake tool: invoices arrive in a shared mailbox, AI extracts and routes them,
 a human confirms once, and Finny produces the Sage 50 import batch and the Teams approval request.
 Every correction teaches an inspectable rule; every failure alerts a named human immediately.

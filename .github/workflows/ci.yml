@@ -1,0 +1,45 @@
+name: CI
+
+# Run the same gates the Render build relies on — typecheck, tests, and a full
+# production build — on every PR and every push to main, so a red check stops a
+# broken merge before it can deploy.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch/PR supersedes the in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          # Matches render.yaml (NODE_VERSION 24) so CI exercises the same
+          # runtime as production — node:sqlite behaviour is version-sensitive.
+          node-version: '24'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
