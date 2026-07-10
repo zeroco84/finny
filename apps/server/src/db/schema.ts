@@ -96,7 +96,10 @@ CREATE TABLE IF NOT EXISTS approvers (
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   teams_user_id TEXT,
-  active INTEGER NOT NULL DEFAULT 1
+  active INTEGER NOT NULL DEFAULT 1,
+  -- 'manual' = added by hand in Settings; 'graph' = pulled from the M365
+  -- approvers group (so a sync may deactivate them if they leave it).
+  source TEXT NOT NULL DEFAULT 'manual'
 );
 
 CREATE TABLE IF NOT EXISTS approval_requests (
@@ -186,6 +189,21 @@ CREATE TABLE IF NOT EXISTS sage_nominals (
 CREATE TABLE IF NOT EXISTS system_status (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- Who may sign into Finny and at what privilege level. Seeded from the M365
+-- group the SSO is scoped to (the 'group' source) and from FINNY_LEAD_EMAILS
+-- ('config'); the AP Lead adjusts roles in Settings ('manual'). This is the
+-- source of truth for role resolution — the sign-in-time default is only used
+-- to create a member the first time they appear.
+CREATE TABLE IF NOT EXISTS team_members (
+  email TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'processor',
+  source TEXT NOT NULL DEFAULT 'group',
+  in_group INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  updated_by TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ingested_messages (

@@ -1,6 +1,8 @@
-import type { Approver, Settings } from '@finny/shared';
+import type { Approver, ApproverSyncResult, Settings } from '@finny/shared';
 import { all, jsonParse, one, run } from '../db/db.js';
+import { config } from '../config.js';
 import { newId } from '../domain/util.js';
+import { type DirectoryPerson, fetchEntraGroupMembers, graphWired } from './entraGroups.js';
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'shadow',
@@ -35,11 +37,23 @@ export const DEFAULT_SETTINGS: Settings = {
   rule_apply: { category: 'auto', approver: 'review' },
 };
 
-const SEED_APPROVERS: Omit<Approver, 'id'>[] = [
+const SEED_APPROVERS: Omit<Approver, 'id' | 'source'>[] = [
   { name: 'James Brennan', email: 'j.brennan@example.com', teams_user_id: null, active: true },
   { name: 'Maeve O’Brien', email: 'm.obrien@example.com', teams_user_id: null, active: true },
   { name: 'Sinead Kavanagh', email: 's.kavanagh@example.com', teams_user_id: null, active: true },
   { name: 'Aidan Doyle', email: 'a.doyle@example.com', teams_user_id: null, active: true },
+];
+
+// The sample approving-managers group shown in `mock` mode — a stand-in for the
+// members of the M365 approvers group. The first four match the seeded
+// approvers (a sync fills in their Teams user id); Fiona is new, so a sync
+// visibly adds someone. `graph` mode replaces this with the real group.
+const MOCK_APPROVERS_GROUP: DirectoryPerson[] = [
+  { name: 'James Brennan', email: 'j.brennan@example.com', entraId: 'mock-aad-james', accountEnabled: true },
+  { name: 'Maeve O’Brien', email: 'm.obrien@example.com', entraId: 'mock-aad-maeve', accountEnabled: true },
+  { name: 'Sinead Kavanagh', email: 's.kavanagh@example.com', entraId: 'mock-aad-sinead', accountEnabled: true },
+  { name: 'Aidan Doyle', email: 'a.doyle@example.com', entraId: 'mock-aad-aidan', accountEnabled: true },
+  { name: 'Fiona Nolan', email: 'f.nolan@example.com', entraId: 'mock-aad-fiona', accountEnabled: true },
 ];
 
 export function seedDefaults(): void {
@@ -102,6 +116,7 @@ export function listApprovers(includeInactive = false): Approver[] {
     email: String(r.email),
     teams_user_id: r.teams_user_id === null ? null : String(r.teams_user_id),
     active: Number(r.active) === 1,
+    source: r.source === 'graph' ? 'graph' : 'manual',
   }));
 }
 
@@ -118,4 +133,75 @@ export function findApproverByEmailOrName(hint: string | null): Approver | null 
       (a) => a.email.toLowerCase() === needle || a.name.toLowerCase() === needle,
     ) ?? null
   );
+}
+
+// ── Approving-managers sync from the M365 group ──────────────────────────────
+
+export function approversProvider(): 'mock' | 'graph' {
+  return graphWired() && Boolean(config.approvers.groupId) ? 'graph' : 'mock';
+}
+
+/** A real M365 approvers group is wired up (so "Sync" hits Graph). */
+export function approversGroupConfigured(): boolean {
+  return approversProvider() === 'graph' && Boolean(config.approvers.groupId);
+}
+
+function fetchApproverGroup(): Promise<DirectoryPerson[]> {
+  if (approversProvider() === 'mock') return Promise.resolve(MOCK_APPROVERS_GROUP.map((m) => ({ ...m })));
+  if (!config.approvers.groupId) {
+    throw new Error('FINNY_APPROVERS_GROUP_ID is not set — add the object id of the approving-managers group');
+  }
+  return fetchEntraGroupMembers(config.approvers.groupId);
+}
+
+/**
+ * Pull the approving-managers group from M365 and reconcile the approvers list:
+ * add newcomers, refresh each member's name + Teams user id (their AAD id, used
+ * to raise Graph approvals), and deactivate anyone previously synced who has
+ * left the group. Hand-added ('manual') approvers are never touched.
+ */
+export async function syncApprovers(): Promise<ApproverSyncResult> {
+  const provider = approversProvider();
+  const people = await fetchApproverGroup();
+  const existing = listApprovers(true);
+  const byEmail = new Map(existing.map((a) => [a.email.toLowerCase(), a]));
+  const seen = new Set<string>();
+  const summary = { added: 0, updated: 0, deactivated: 0 };
+
+  for (const person of people) {
+    const email = person.email.trim().toLowerCase();
+    seen.add(email);
+    const match = byEmail.get(email);
+    if (match) {
+      run(
+        "UPDATE approvers SET name = ?, teams_user_id = ?, active = ?, source = 'graph' WHERE id = ?",
+        person.name,
+        person.entraId,
+        person.accountEnabled ? 1 : 0,
+        match.id,
+      );
+      summary.updated++;
+    } else {
+      run(
+        "INSERT INTO approvers (id, name, email, teams_user_id, active, source) VALUES (?, ?, ?, ?, ?, 'graph')",
+        newId(),
+        person.name,
+        person.email,
+        person.entraId,
+        person.accountEnabled ? 1 : 0,
+      );
+      summary.added++;
+    }
+  }
+
+  // Anyone we previously synced but who is no longer in the group loses their
+  // approver status; manually-added approvers are left alone.
+  for (const approver of existing) {
+    if (approver.source === 'graph' && approver.active && !seen.has(approver.email.toLowerCase())) {
+      run('UPDATE approvers SET active = 0 WHERE id = ?', approver.id);
+      summary.deactivated++;
+    }
+  }
+
+  return { provider, group_configured: approversGroupConfigured(), summary };
 }

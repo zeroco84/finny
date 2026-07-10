@@ -46,7 +46,17 @@ import { configuredSageEntities, fetchActiveNominals, fetchSageReference, resolv
 import { validateAgainstSage } from '../services/sage/reference.js';
 import { pullSummary, storePulledNominals } from '../services/sage/nominals.js';
 import { dashboardMetrics, volumeMetrics } from '../services/metrics.js';
-import { getApprover, getSettings, listApprovers, updateSettings } from '../services/settings.js';
+import {
+  approversGroupConfigured,
+  approversProvider,
+  getApprover,
+  getSettings,
+  listApprovers,
+  syncApprovers,
+  updateSettings,
+} from '../services/settings.js';
+import { ensureTeamMemberOnSignIn, listTeam, setMemberRole, syncGroup, TeamError } from '../services/team.js';
+import { GraphAuthError } from '../services/graph/graphClient.js';
 import { all, one, run } from '../db/db.js';
 import { newId, nowIso } from '../domain/util.js';
 import { audit } from '../services/audit.js';
@@ -107,8 +117,11 @@ export function buildRouter(): Router {
       res.status(400).json({ error: 'email, name and role (processor|lead) are required' });
       return;
     }
-    res.setHeader('Set-Cookie', createSessionCookie(parsed.data));
-    res.json(parsed.data);
+    // Seed/refresh the directory row and sign the cookie with the effective
+    // role — an existing directory role wins over the picked one.
+    const user = { ...parsed.data, role: ensureTeamMemberOnSignIn(parsed.data) };
+    res.setHeader('Set-Cookie', createSessionCookie(user));
+    res.json(user);
   });
   router.post('/auth/logout', (_req, res) => {
     res.setHeader('Set-Cookie', clearSessionCookie());
@@ -599,6 +612,84 @@ export function buildRouter(): Router {
     );
     audit(null, 'approver_updated', req.user!.email, { approver_id: paramId(req) });
     res.json(getApprover(paramId(req)));
+  });
+
+  // Whether the approvers sync is backed by a real M365 group (drives the
+  // Settings button label / hint).
+  router.get('/approvers/directory', (_req, res) => {
+    res.json({ provider: approversProvider(), group_configured: approversGroupConfigured() });
+  });
+
+  // Pull the approving-managers group from M365 (or the mock list) and
+  // reconcile the approver list — see syncApprovers().
+  router.post('/approvers/sync', requireLead, async (req, res) => {
+    try {
+      const result = await syncApprovers();
+      audit(null, 'approvers_synced', req.user!.email, { provider: result.provider, ...result.summary });
+      res.json(result);
+    } catch (err) {
+      const message =
+        err instanceof GraphAuthError
+          ? `Microsoft 365 rejected the request — check the group id and that the app has GroupMember.Read.All: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Approvers sync failed';
+      res.status(502).json({ error: message });
+    }
+  });
+
+  // ── Team & privileges ─────────────────────────────────────────────────────
+  // The directory of who can sign in and at what level, seeded from the M365
+  // group the SSO is scoped to. Visible to all; only the AP Lead can change it.
+  router.get('/team', (req, res) => {
+    res.json(listTeam(req.user!.email));
+  });
+
+  // Pull the group from Microsoft 365 (or the mock list) and reconcile roles.
+  router.post('/team/sync', requireLead, async (req, res) => {
+    try {
+      const directory = await syncGroup(req.user!.email);
+      audit(null, 'team_synced', req.user!.email, {
+        provider: directory.provider,
+        members: directory.members.length,
+      });
+      res.json(directory);
+    } catch (err) {
+      if (err instanceof TeamError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      const message =
+        err instanceof GraphAuthError
+          ? `Microsoft 365 rejected the request — check the group id and that the app has GroupMember.Read.All: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Team sync failed';
+      res.status(502).json({ error: message });
+    }
+  });
+
+  const teamRoleSchema = z.object({
+    email: z.string().email(),
+    role: z.enum(['processor', 'lead']),
+  });
+  router.patch('/team', requireLead, (req, res) => {
+    const parsed = teamRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'email and role (processor|lead) are required' });
+      return;
+    }
+    try {
+      const member = setMemberRole(parsed.data.email, parsed.data.role, req.user!.email);
+      audit(null, 'team_role_changed', req.user!.email, { email: member.email, role: member.role });
+      res.json(member);
+    } catch (err) {
+      if (err instanceof TeamError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   // ── Simulators (mock providers only) ──────────────────────────────────────

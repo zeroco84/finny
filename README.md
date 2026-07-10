@@ -169,12 +169,28 @@ is auth-provider-agnostic, and dev login is disabled. Setup:
    `APP_URL=https://<your-domain>` — otherwise Finny derives the callback (and every other
    absolute link) from `RENDER_EXTERNAL_URL`, which stays on `.onrender.com` and Entra rejects
    it with `AADSTS50011` (redirect URI mismatch).
-4. `FINNY_LEAD_EMAILS=amy@example.com,rory@example.com` — these sign in as **AP Lead**;
-   everyone else is a processor.
+4. `FINNY_LEAD_EMAILS=amy@example.com,rory@example.com` — these are **pinned** AP Leads (they
+   can't be demoted in-app, so put your own address here to guarantee access). Everyone else
+   starts as a processor; if you leave this blank, the first person to sign in is promoted to
+   Lead automatically so a fresh deploy always has an admin.
 5. **Who can sign in:** the tenant-specific endpoint already limits sign-in to your tenant. To
    limit it to the finance team, open the app under *Enterprise applications*, set
    **Assignment required = Yes**, and assign the team (or their group). That's access control
    handled in Entra, where IT can audit it.
+6. **Managing privilege levels in-app:** point Finny at that same group with
+   `FINNY_TEAM_GROUP_ID=<group object id>` and grant the app registration the **application**
+   permission `GroupMember.Read.All` (admin consent). **Settings → Team & privileges** then lists
+   the group's members with a per-person AP Lead / AP Processor switch — "Sync from Microsoft
+   365" re-pulls the roster. Roles resolve live from this directory on every request, so a change
+   takes effect on the member's next click (no re-login). Without a group id the card shows a
+   sample team so the flow is still visible.
+7. **Syncing approving managers:** set `FINNY_APPROVERS_GROUP_ID=<group object id>` (the same
+   `GroupMember.Read.All` permission covers it) and **Settings → Approving managers → "Sync from
+   Microsoft 365"** pulls that group's members into the approver list — capturing each manager's
+   Entra id as their **Teams user id**, which the `graph` approvals provider uses to raise the
+   approval. Newcomers are added, names/ids refreshed, and anyone who has left the group is
+   deactivated; managers you add by hand are never touched. It can be the same group as the
+   sign-in team or a separate approvers group.
 
 Cookies are marked `Secure` automatically when `APP_URL` is https. Sign-out clears Finny's
 session but not the Microsoft session — the next sign-in is usually silent SSO.

@@ -72,6 +72,21 @@ export interface Approver {
   email: string;
   teams_user_id: string | null;
   active: boolean;
+  /** 'manual' = added in Settings; 'graph' = synced from the M365 approvers group. */
+  source: 'manual' | 'graph';
+}
+
+/** Result of POST /approvers/sync — what the M365 pull changed. */
+export interface ApproverSyncResult {
+  provider: 'mock' | 'graph';
+  group_configured: boolean;
+  summary: { added: number; updated: number; deactivated: number };
+}
+
+/** GET /approvers/directory — whether the approvers sync is backed by real M365. */
+export interface ApproverDirectory {
+  provider: 'mock' | 'graph';
+  group_configured: boolean;
 }
 
 export interface Category {
@@ -346,6 +361,39 @@ export interface SessionUser {
   email: string;
   name: string;
   role: 'processor' | 'lead';
+}
+
+/** Privilege level. Mirrors SessionUser['role'] — the two roles the app knows. */
+export type TeamRole = SessionUser['role'];
+
+/**
+ * One person in the Finny team directory — the source of truth for who is an
+ * AP Lead vs AP Processor. Seeded from the M365 group the SSO is scoped to and
+ * adjustable in Settings; `role` here overrides the sign-in-time default.
+ */
+export interface TeamMember {
+  email: string;
+  name: string;
+  role: TeamRole;
+  /** How the row got here: config (FINNY_LEAD_EMAILS pin), bootstrap (first
+   *  sign-in), group (an M365 group sync), or manual (set in Settings). */
+  source: 'config' | 'bootstrap' | 'group' | 'manual';
+  /** Present in the most recent Microsoft 365 group sync (i.e. can sign in). */
+  in_group: boolean;
+  /** Pinned to Lead via FINNY_LEAD_EMAILS — cannot be demoted in the UI. */
+  config_lead: boolean;
+  /** True for the row belonging to the signed-in user (the "You" marker). */
+  is_self: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** GET /team — the directory plus which provider backs the M365 sync. */
+export interface TeamDirectory {
+  provider: 'mock' | 'graph';
+  /** A group id is configured (graph mode) — the sync will hit real M365. */
+  group_configured: boolean;
+  members: TeamMember[];
 }
 
 /** Payload for the single review action (shadow log / live confirm / discard). */
