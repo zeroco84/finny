@@ -22,10 +22,10 @@ jobs:
     name: typecheck · test · build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           # Matches render.yaml (NODE_VERSION 24) so CI exercises the same
           # runtime as production — node:sqlite behaviour is version-sensitive.
