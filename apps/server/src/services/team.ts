@@ -2,7 +2,7 @@ import type { SessionUser, TeamDirectory, TeamMember, TeamRole } from '@finny/sh
 import { config } from '../config.js';
 import { all, one, run } from '../db/db.js';
 import { nowIso } from '../domain/util.js';
-import { fetchEntraGroupMembers, graphWired } from './entraGroups.js';
+import { directoryMode, fetchEntraGroupMembers } from './entraGroups.js';
 
 /**
  * Team directory & privilege management.
@@ -56,9 +56,10 @@ const MOCK_GROUP: GroupPerson[] = [
 // ── Provider selection ───────────────────────────────────────────────────────
 
 export function teamProvider(): 'mock' | 'graph' {
-  // Pull the real group when Graph is wired and a team group id is set;
-  // otherwise show the offline mock team.
-  return graphWired() && Boolean(config.team.groupId) ? 'graph' : 'mock';
+  // Real directory under SSO, sample only in dev — see directoryMode(). Under
+  // Entra this is 'graph' even before a group id is set, so no sample team is
+  // ever seeded into a live deployment.
+  return directoryMode();
 }
 
 /** A real M365 group is wired up (so "Sync" hits Graph, not the mock list). */

@@ -2,7 +2,7 @@ import type { Approver, ApproverSyncResult, Settings } from '@finny/shared';
 import { all, jsonParse, one, run } from '../db/db.js';
 import { config } from '../config.js';
 import { newId } from '../domain/util.js';
-import { type DirectoryPerson, fetchEntraGroupMembers, graphWired } from './entraGroups.js';
+import { directoryMode, type DirectoryPerson, fetchEntraGroupMembers } from './entraGroups.js';
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'shadow',
@@ -138,7 +138,8 @@ export function findApproverByEmailOrName(hint: string | null): Approver | null 
 // ── Approving-managers sync from the M365 group ──────────────────────────────
 
 export function approversProvider(): 'mock' | 'graph' {
-  return graphWired() && Boolean(config.approvers.groupId) ? 'graph' : 'mock';
+  // Same rule as the team directory: real under SSO, sample only in dev.
+  return directoryMode();
 }
 
 /** A real M365 approvers group is wired up (so "Sync" hits Graph). */
