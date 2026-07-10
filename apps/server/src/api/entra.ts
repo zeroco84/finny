@@ -4,6 +4,7 @@ import * as oidc from 'openid-client';
 import type { SessionUser } from '@finny/shared';
 import { config } from '../config.js';
 import { audit } from '../services/audit.js';
+import { ensureTeamMemberOnSignIn } from '../services/team.js';
 import { createSessionCookie } from './auth.js';
 
 /**
@@ -184,6 +185,9 @@ export async function entraCallback(req: Request, res: Response): Promise<void> 
       fail(`ID token carried no usable email (claims: ${Object.keys(claims ?? {}).join(', ')})`);
       return;
     }
+    // Register the sign-in in the team directory (first-user bootstrap / config
+    // pin) and sign the cookie with the resolved privilege level.
+    user.role = ensureTeamMemberOnSignIn(user);
     audit(null, 'signed_in', user.email, { provider: 'entra', role: user.role });
     res.setHeader('Set-Cookie', [clearFlowCookie(), createSessionCookie(user)]);
     res.redirect('/');

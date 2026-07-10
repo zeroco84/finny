@@ -100,12 +100,31 @@ export const config = {
     // Test hook only: lets the OIDC flow talk to a plain-HTTP mock IdP.
     allowHttp: env('ENTRA_ALLOW_HTTP') === 'true',
   },
-  // Signed-in users with one of these emails get the AP Lead role;
-  // everyone else who can sign in is a processor.
+  // Signed-in users with one of these emails get the AP Lead role and cannot
+  // be demoted in Settings (the lockout guard); everyone else who can sign in
+  // starts as a processor. Roles are otherwise managed in the Team directory.
   leadEmails: env('FINNY_LEAD_EMAILS')
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
+  // Team directory / privilege management. 'mock' shows a seeded finance group
+  // (works offline); 'graph' pulls the real members of the Entra security group
+  // the SSO is scoped to. Defaults to graph once a group id is set alongside
+  // Entra sign-in, otherwise mock.
+  team: {
+    // Also governs the approving-managers sync (both directories share the
+    // Graph wiring). '' = auto (graph once Entra sign-in + Graph creds exist).
+    provider: env('TEAM_PROVIDER') as 'mock' | 'graph' | '',
+    // Object id of the M365 group whose members may sign in (the group assigned
+    // to the enterprise app). Read via Graph GET /groups/{id}/members.
+    groupId: env('FINNY_TEAM_GROUP_ID'),
+  },
+  approvers: {
+    // Object id of the M365 group of approving managers. Settings → Approving
+    // managers → "Sync" pulls its members (name, email, and AAD id → the Teams
+    // user id used to raise approvals). Separate from the sign-in team group.
+    groupId: env('FINNY_APPROVERS_GROUP_ID'),
+  },
   sessionSecret: '',
 };
 

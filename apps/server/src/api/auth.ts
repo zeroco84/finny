@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { SessionUser } from '@finny/shared';
 import { config } from '../config.js';
+import { resolveRole } from '../services/team.js';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -59,7 +60,16 @@ export function readSession(req: Request): SessionUser | null {
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()) as SessionUser & { iat: number };
     if (!parsed.email || (parsed.role !== 'processor' && parsed.role !== 'lead')) return null;
-    return { email: parsed.email, name: parsed.name ?? parsed.email, role: parsed.role };
+    // The cookie authenticates identity; the role is resolved live from the
+    // team directory so a privilege change applies on the next request without
+    // re-login. Fall back to the signed role if the directory is unreachable.
+    let role: SessionUser['role'] = parsed.role;
+    try {
+      role = resolveRole(parsed.email);
+    } catch {
+      /* DB not ready — trust the signed cookie */
+    }
+    return { email: parsed.email, name: parsed.name ?? parsed.email, role };
   } catch {
     return null;
   }

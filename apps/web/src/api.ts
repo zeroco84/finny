@@ -1,6 +1,8 @@
 import type {
   Alert,
   Approver,
+  ApproverDirectory,
+  ApproverSyncResult,
   ConnectorStatus,
   DashboardMetrics,
   InvoiceDetail,
@@ -11,6 +13,9 @@ import type {
   SageBatch,
   SessionUser,
   Settings,
+  TeamDirectory,
+  TeamMember,
+  TeamRole,
   VolumeMetrics,
 } from '@finny/shared';
 
@@ -134,6 +139,12 @@ export const api = {
   approvers: () => get<Approver[]>('/approvers'),
   addApprover: (body: { name: string; email: string }) => post<Approver>('/approvers', body),
   updateApprover: (id: string, body: Partial<Approver>) => patch<Approver>(`/approvers/${id}`, body),
+  approversDirectory: () => get<ApproverDirectory>('/approvers/directory'),
+  syncApprovers: () => post<ApproverSyncResult>('/approvers/sync'),
+
+  team: () => get<TeamDirectory>('/team'),
+  syncTeam: () => post<TeamDirectory>('/team/sync'),
+  setTeamRole: (email: string, role: TeamRole) => patch<TeamMember>('/team', { email, role }),
 
   simulateInvoice: (scenario: string, count = 1) => post<{ ids: string[] }>('/simulate/invoice', { scenario, count }),
   simulateApproval: (invoiceId: string, decision: 'approved' | 'rejected', note?: string) =>

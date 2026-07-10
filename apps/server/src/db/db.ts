@@ -28,12 +28,22 @@ function migrate(database: DatabaseSync): void {
   ensureColumn('invoices', 'sage_tx_number', 'TEXT');
   ensureColumn('invoices', 'sage_posted_at', 'TEXT');
   ensureColumn('sage_batches', 'entity', 'TEXT');
+  ensureColumn('approvers', 'source', "TEXT NOT NULL DEFAULT 'manual'");
   database.exec(`CREATE TABLE IF NOT EXISTS sage_nominals (
     entity TEXT NOT NULL,
     account_ref TEXT NOT NULL,
     name TEXT NOT NULL,
     pulled_at TEXT NOT NULL,
     PRIMARY KEY (entity, account_ref)
+  )`);
+  database.exec(`CREATE TABLE IF NOT EXISTS team_members (
+    email TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'processor',
+    source TEXT NOT NULL DEFAULT 'group',
+    in_group INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
   )`);
 }
 

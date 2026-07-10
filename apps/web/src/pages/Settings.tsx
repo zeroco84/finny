@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ConnectorStatus, Settings } from '@finny/shared';
+import type { ApproverDirectory, ConnectorStatus, Settings, TeamDirectory, TeamRole } from '@finny/shared';
 import { api, type SageReferenceCheck } from '../api';
 import { dateTime } from '../format';
 import { useMeta } from '../meta';
@@ -20,6 +20,10 @@ export default function SettingsPage() {
   const [nominalSummary, setNominalSummary] = useState<{ entity: string; count: number; pulled_at: string }[]>([]);
   const [pullEntity, setPullEntity] = useState(settings.entities[0] ?? '');
   const [pullBusy, setPullBusy] = useState(false);
+  const [team, setTeam] = useState<TeamDirectory | null>(null);
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [approverDir, setApproverDir] = useState<ApproverDirectory | null>(null);
+  const [approverSyncBusy, setApproverSyncBusy] = useState(false);
 
   const sageConnected = (status?.sage_entities.length ?? 0) > 0;
   const hasPulled = nominalSummary.length > 0;
@@ -27,7 +31,57 @@ export default function SettingsPage() {
   useEffect(() => {
     void api.status().then(setStatus);
     void api.sageNominals().then((r) => setNominalSummary(r.summary)).catch(() => undefined);
+    void api.team().then(setTeam).catch(() => undefined);
+    void api.approversDirectory().then(setApproverDir).catch(() => undefined);
   }, []);
+
+  async function syncApprovers() {
+    setApproverSyncBusy(true);
+    setError(null);
+    try {
+      const { summary, provider } = await api.syncApprovers();
+      await refreshMeta();
+      const bits = [
+        summary.added ? `${summary.added} added` : '',
+        summary.updated ? `${summary.updated} updated` : '',
+        summary.deactivated ? `${summary.deactivated} deactivated` : '',
+      ].filter(Boolean);
+      setNotice(
+        `Synced approving managers from ${provider === 'graph' ? 'Microsoft 365' : 'the sample group'}` +
+          (bits.length ? ` — ${bits.join(', ')}.` : ' — no changes.'),
+      );
+      setTimeout(() => setNotice(null), 6000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Approvers sync failed');
+    } finally {
+      setApproverSyncBusy(false);
+    }
+  }
+
+  async function syncTeam() {
+    setTeamBusy(true);
+    setError(null);
+    try {
+      const dir = await api.syncTeam();
+      setTeam(dir);
+      setNotice(`Synced ${dir.members.length} people from ${dir.provider === 'graph' ? 'Microsoft 365' : 'the sample group'}.`);
+      setTimeout(() => setNotice(null), 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Team sync failed');
+    } finally {
+      setTeamBusy(false);
+    }
+  }
+
+  async function changeRole(email: string, role: TeamRole) {
+    setError(null);
+    try {
+      await api.setTeamRole(email, role);
+      setTeam(await api.team());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change access level');
+    }
+  }
 
   async function pullNominals() {
     setPullBusy(true);
@@ -110,6 +164,69 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {team && (
+        <div className="card">
+          <h2>Team &amp; privileges</h2>
+          <p className="muted small">
+            Everyone in {team.group_configured ? 'your Microsoft 365 group' : 'the finance team'} can sign in.
+            AP Leads approve rule changes, edit these settings and switch shadow/live; AP Processors review
+            invoices. {isLead ? 'Change a level with the dropdown.' : 'Only an AP Lead can change these.'}
+            {team.provider === 'mock' && ' Showing a sample group — connect the M365 group to manage the real team.'}
+          </p>
+          <table className="table table-compact">
+            <thead><tr><th>Name</th><th>Email</th><th>Access level</th><th /></tr></thead>
+            <tbody>
+              {team.members.map((m) => (
+                <tr key={m.email} className={m.in_group ? '' : 'muted'}>
+                  <td>
+                    {m.name}
+                    {m.is_self && <span className="chip" style={{ marginLeft: 6 }}>You</span>}
+                  </td>
+                  <td>{m.email}</td>
+                  <td>
+                    {isLead && !m.config_lead && !m.is_self ? (
+                      <select value={m.role} onChange={(e) => void changeRole(m.email, e.target.value as TeamRole)}>
+                        <option value="processor">AP Processor</option>
+                        <option value="lead">AP Lead</option>
+                      </select>
+                    ) : (
+                      <span className={`chip ${m.role === 'lead' ? 'status-approved' : ''}`}>
+                        {m.role === 'lead' ? 'AP Lead' : 'AP Processor'}
+                      </span>
+                    )}
+                    {m.config_lead && (
+                      <span className="muted small" title="Pinned to AP Lead via FINNY_LEAD_EMAILS"> · pinned</span>
+                    )}
+                    {m.is_self && !m.config_lead && isLead && (
+                      <span className="muted small" title="Ask another AP Lead to change your own access"> · you</span>
+                    )}
+                  </td>
+                  <td>
+                    {!m.in_group && (
+                      <span className="chip status-needs_review" title="Not in the M365 group — cannot sign in">
+                        not in group
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {isLead && (
+            <div className="row-actions">
+              <button className="btn btn-small btn-primary" disabled={teamBusy} onClick={() => void syncTeam()}>
+                {teamBusy ? 'Syncing…' : team.group_configured ? 'Sync from Microsoft 365' : 'Refresh sample team'}
+              </button>
+              {!team.group_configured && (
+                <span className="muted small">
+                  Set <code>FINNY_TEAM_GROUP_ID</code> (and <code>AUTH_PROVIDER=entra</code>) to manage your real M365 group.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h2>Review thresholds &amp; alerts</h2>
@@ -493,12 +610,24 @@ export default function SettingsPage() {
 
       <div className="card">
         <h2>Approving managers</h2>
+        <p className="muted small">
+          Managers who approve invoices in Teams — they don't sign into Finny.{' '}
+          {approverDir?.group_configured
+            ? 'Synced from your Microsoft 365 approvers group'
+            : 'Add them by hand, or sync from a Microsoft 365 group'}
+          , which also captures each manager's Teams user id used to raise approvals.
+        </p>
         <table className="table table-compact">
           <thead><tr><th>Name</th><th>Email</th><th>Status</th><th /></tr></thead>
           <tbody>
             {approvers.map((a) => (
               <tr key={a.id} className={a.active ? '' : 'muted'}>
-                <td>{a.name}</td>
+                <td>
+                  {a.name}
+                  {a.source === 'graph' && (
+                    <span className="chip" style={{ marginLeft: 6 }} title="Synced from Microsoft 365">M365</span>
+                  )}
+                </td>
                 <td>{a.email}</td>
                 <td>{a.active ? 'active' : 'inactive'}</td>
                 <td>{isLead && (
@@ -512,19 +641,31 @@ export default function SettingsPage() {
           </tbody>
         </table>
         {isLead && (
-          <div className="row-actions">
-            <input placeholder="Name" value={newApprover.name}
-              onChange={(e) => setNewApprover({ ...newApprover, name: e.target.value })} />
-            <input placeholder="email@company.com" value={newApprover.email}
-              onChange={(e) => setNewApprover({ ...newApprover, email: e.target.value })} />
-            <button className="btn btn-small btn-primary" disabled={!newApprover.name || !newApprover.email}
-              onClick={() => void api.addApprover(newApprover).then(() => {
-                setNewApprover({ name: '', email: '' });
-                return refreshMeta();
-              })}>
-              Add
-            </button>
-          </div>
+          <>
+            <div className="row-actions" style={{ marginBottom: 8 }}>
+              <button className="btn btn-small btn-primary" disabled={approverSyncBusy} onClick={() => void syncApprovers()}>
+                {approverSyncBusy ? 'Syncing…' : approverDir?.group_configured ? 'Sync from Microsoft 365' : 'Refresh sample managers'}
+              </button>
+              {approverDir && !approverDir.group_configured && (
+                <span className="muted small">
+                  Set <code>FINNY_APPROVERS_GROUP_ID</code> to pull your real M365 approvers group.
+                </span>
+              )}
+            </div>
+            <div className="row-actions">
+              <input placeholder="Name" value={newApprover.name}
+                onChange={(e) => setNewApprover({ ...newApprover, name: e.target.value })} />
+              <input placeholder="email@company.com" value={newApprover.email}
+                onChange={(e) => setNewApprover({ ...newApprover, email: e.target.value })} />
+              <button className="btn btn-small btn-primary" disabled={!newApprover.name || !newApprover.email}
+                onClick={() => void api.addApprover(newApprover).then(() => {
+                  setNewApprover({ name: '', email: '' });
+                  return refreshMeta();
+                })}>
+                Add
+              </button>
+            </div>
+          </>
         )}
       </div>
 
