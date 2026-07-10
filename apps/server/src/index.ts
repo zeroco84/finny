@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config, ensureDataDirs } from './config.js';
 import { openDb } from './db/db.js';
 import { seedDefaults } from './services/settings.js';
-import { seedTeam } from './services/team.js';
+import { purgeSampleDirectory, seedTeam } from './services/team.js';
 import { buildRouter } from './api/routes.js';
 import { entraConfigError } from './api/entra.js';
 import { startWorkers } from './workers.js';
@@ -50,6 +50,8 @@ export function boot(): void {
   openDb(config.dbPath);
   seedDefaults();
   seedTeam();
+  // Remove any sample people a pre-SSO boot may have seeded (no-op in dev).
+  purgeSampleDirectory();
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
