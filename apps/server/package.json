@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "demo": "tsx scripts/demo.ts",
+    "admin": "tsx scripts/admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

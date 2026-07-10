@@ -4,6 +4,7 @@ import { closeDb, openDb, run } from '../src/db/db.js';
 import {
   ensureTeamMemberOnSignIn,
   listTeam,
+  purgeSampleDirectory,
   resolveRole,
   seedTeam,
   setMemberRole,
@@ -119,6 +120,17 @@ describe('seedTeam + syncGroup (mock provider)', () => {
       config_lead: true,
     });
     expect(dir.members.find((m) => m.email === 'amy@example.com')).toBeTruthy();
+  });
+
+  it('purgeSampleDirectory clears sample rows under Entra but keeps them in dev', () => {
+    seedTeam(); // dev/mock: seeds the @example.com sample group
+    purgeSampleDirectory(); // dev → no-op
+    expect(listTeam(null).members.some((m) => m.email.endsWith('@example.com'))).toBe(true);
+
+    config.team.provider = ''; // auto
+    config.authProvider = 'entra';
+    purgeSampleDirectory(); // real SSO → strips the leftover samples
+    expect(listTeam(null).members.some((m) => m.email.endsWith('@example.com'))).toBe(false);
   });
 
   it('under Entra never seeds sample people and bootstraps the first real user', () => {
