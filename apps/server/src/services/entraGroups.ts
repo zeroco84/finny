@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { graphConfigured, graphFetch } from './graph/graphClient.js';
+import { graphFetch } from './graph/graphClient.js';
 
 /**
  * Reading the members of a Microsoft 365 / Entra security group via Graph.
@@ -17,14 +17,16 @@ export interface DirectoryPerson {
 }
 
 /**
- * Are we wired to talk to Graph at all? `TEAM_PROVIDER` forces it either way;
- * otherwise the directories go live once Entra sign-in and Graph credentials
- * are present. Each feature still needs its own group id to actually sync.
+ * Whether the directories run against real Microsoft 365 (`graph`) or the
+ * offline sample (`mock`). `TEAM_PROVIDER` forces it; otherwise it is `graph`
+ * under Entra SSO and `mock` only in dev — so a real deployment NEVER seeds or
+ * shows sample people, even before a group id is configured. Each feature still
+ * needs its own group id for the actual sync to succeed.
  */
-export function graphWired(): boolean {
-  if (config.team.provider === 'graph') return true;
-  if (config.team.provider === 'mock') return false;
-  return config.authProvider === 'entra' && graphConfigured();
+export function directoryMode(): 'mock' | 'graph' {
+  if (config.team.provider === 'graph') return 'graph';
+  if (config.team.provider === 'mock') return 'mock';
+  return config.authProvider === 'entra' ? 'graph' : 'mock';
 }
 
 interface GraphDirectoryObject {

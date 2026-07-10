@@ -11,9 +11,10 @@ services:
     # --include=dev: Render sets NODE_ENV=production, but the server runs via
     # tsx and the web build needs vite — both devDependencies.
     buildCommand: npm ci --include=dev && npm run build
-    # First boot on an empty disk seeds the demo dataset (queue, learned
-    # rules, dashboard history, one open alert), then starts the server.
-    startCommand: bash -c 'if [ ! -f "$DATA_DIR/finny.db" ]; then npm run demo; fi; npm run start'
+    # First boot on an empty disk seeds the demo dataset (queue, learned rules,
+    # dashboard history, one open alert) ONLY when SEED_DEMO=true — so a real
+    # deployment starts empty. Leave SEED_DEMO unset for production.
+    startCommand: bash -c 'if [ "$SEED_DEMO" = "true" ] && [ ! -f "$DATA_DIR/finny.db" ]; then npm run demo; fi; npm run start'
     healthCheckPath: /api/health
     disk:
       name: finny-data

@@ -216,7 +216,7 @@ export default function SettingsPage() {
           {isLead && (
             <div className="row-actions">
               <button className="btn btn-small btn-primary" disabled={teamBusy} onClick={() => void syncTeam()}>
-                {teamBusy ? 'Syncing…' : team.group_configured ? 'Sync from Microsoft 365' : 'Refresh sample team'}
+                {teamBusy ? 'Syncing…' : team.provider === 'mock' ? 'Refresh sample team' : 'Sync from Microsoft 365'}
               </button>
               {!team.group_configured && (
                 <span className="muted small">
@@ -644,7 +644,7 @@ export default function SettingsPage() {
           <>
             <div className="row-actions" style={{ marginBottom: 8 }}>
               <button className="btn btn-small btn-primary" disabled={approverSyncBusy} onClick={() => void syncApprovers()}>
-                {approverSyncBusy ? 'Syncing…' : approverDir?.group_configured ? 'Sync from Microsoft 365' : 'Refresh sample managers'}
+                {approverSyncBusy ? 'Syncing…' : approverDir?.provider === 'mock' ? 'Refresh sample managers' : 'Sync from Microsoft 365'}
               </button>
               {approverDir && !approverDir.group_configured && (
                 <span className="muted small">

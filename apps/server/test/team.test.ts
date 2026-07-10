@@ -121,6 +121,19 @@ describe('seedTeam + syncGroup (mock provider)', () => {
     expect(dir.members.find((m) => m.email === 'amy@example.com')).toBeTruthy();
   });
 
+  it('under Entra never seeds sample people and bootstraps the first real user', () => {
+    config.team.provider = ''; // auto
+    config.authProvider = 'entra';
+    seedTeam();
+    const dir = listTeam(null);
+    expect(dir.provider).toBe('graph');
+    expect(dir.members).toHaveLength(0); // no amy@example.com etc. in production
+    // First real sign-in with no configured lead is promoted to AP Lead...
+    expect(ensureTeamMemberOnSignIn(user('boss@corp.com'))).toBe('lead');
+    // ...and a colleague who signs in afterwards is a processor.
+    expect(ensureTeamMemberOnSignIn(user('clerk@corp.com'))).toBe('processor');
+  });
+
   it('preserves manual roles and flags people who are not in the group', async () => {
     seedTeam();
     // A manual promotion must survive a re-sync.

@@ -300,14 +300,17 @@ without a project are excluded by design (the dashboard matches on `project_code
 
 The repo ships a [render.yaml](render.yaml) blueprint: Render dashboard → **New → Blueprint** →
 select this repo → Deploy. You get a single web service (API + web app on one URL) with a 1 GB
-persistent disk; the first boot seeds the demo dataset automatically, so the link lands on a
-populated queue. Everything runs on mock providers — no keys needed. Pushes to `main` auto-deploy.
+persistent disk. Set `SEED_DEMO=true` to seed the demo dataset on first boot (a populated
+queue, learned rules, dashboard history) — leave it unset for a **real, empty** deployment.
+Everything runs on mock providers until you add keys. Pushes to `main` auto-deploy.
 
-Notes: the blueprint boots with dev sign-in, so anyone with the URL can log in — fine for
-simulated data; for the team-facing deploy set `AUTH_PROVIDER=entra` (see "Wiring up Entra ID
-sign-in") so access is M365 accounts only. To run free-tier instead,
-set `plan: free` and remove the `disk` block — the service then sleeps when idle and re-seeds
-fresh demo data on wake.
+Notes: the blueprint boots with dev sign-in, so anyone with the URL can log in — fine for a
+`SEED_DEMO=true` sandbox; for the team-facing deploy set `AUTH_PROVIDER=entra` (see "Wiring up
+Entra ID sign-in") so access is M365 accounts only. Under Entra the team/approvers directories
+run against real Microsoft 365 (never the sample people), and the first person to sign in with
+no lead configured is made AP Lead — set `FINNY_LEAD_EMAILS` to pin that deterministically. To
+run free-tier instead, set `plan: free` and remove the `disk` block — the service then sleeps
+when idle (and, with `SEED_DEMO=true`, re-seeds fresh demo data on wake).
 
 ## Commands
 

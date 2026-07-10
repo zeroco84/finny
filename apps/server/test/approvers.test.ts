@@ -62,4 +62,12 @@ describe('syncApprovers (mock provider)', () => {
     // A previously-synced manager no longer in the group is deactivated, not deleted.
     expect(list.find((a) => a.email === 'gone@example.com')).toMatchObject({ active: false });
   });
+
+  it('under Entra with no group id, sync errors instead of injecting sample managers', async () => {
+    config.team.provider = ''; // auto
+    config.authProvider = 'entra';
+    await expect(syncApprovers()).rejects.toThrow(/FINNY_APPROVERS_GROUP_ID/);
+    // The seeded approvers are still the real four — no example.com samples added.
+    expect(listApprovers(true).every((a) => a.source === 'manual')).toBe(true);
+  });
 });
