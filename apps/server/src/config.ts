@@ -57,13 +57,10 @@ export const config = {
   approvalsProvider: env('APPROVALS_PROVIDER', 'mock') as 'mock' | 'graph',
   approvalsPollSeconds: Number(env('APPROVALS_POLL_SECONDS', '60')),
 
-  smtp: {
-    host: env('SMTP_HOST'),
-    port: Number(env('SMTP_PORT', '587')),
-    user: env('SMTP_USER'),
-    pass: env('SMTP_PASS'),
-    from: env('SMTP_FROM', 'finny-alerts@example.com'),
-  },
+  // Failure alerts are POSTed as an Adaptive Card to a Teams-subscribable
+  // Incoming Webhook. Set here as a default, or per-deployment in Settings
+  // (the stored value wins). Empty = alerts are stored and shown in the UI only.
+  alertWebhookUrl: env('ALERT_WEBHOOK_URL'),
 
   // Bearer token for the BlockDocs cost-dashboard pull endpoint; empty = disabled.
   blockdocsToken: env('FINNY_BLOCKDOCS_TOKEN'),

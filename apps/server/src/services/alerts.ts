@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import type { Alert, AlertType } from '@finny/shared';
 import { all, one, run } from '../db/db.js';
 import { config } from '../config.js';
@@ -113,28 +112,84 @@ const TEMPLATES: Record<AlertType, Template> = {
   },
 };
 
-let transporter: nodemailer.Transporter | null = null;
-
-export function emailProviderName(): 'smtp' | 'log' {
-  return config.smtp.host ? 'smtp' : 'log';
+/** The configured Teams webhook — a value stored in Settings wins over the env default. */
+function webhookUrl(): string {
+  return (getSettings().alert_webhook_url || config.alertWebhookUrl || '').trim();
 }
 
-function getTransporter(): nodemailer.Transporter | null {
-  if (!config.smtp.host) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: config.smtp.port === 465,
-      auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
-    });
+export function alertsChannelName(): 'webhook' | 'off' {
+  return webhookUrl() ? 'webhook' : 'off';
+}
+
+/** Host of the webhook for display/audit — never store the secret token path. */
+function urlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'webhook';
   }
-  return transporter;
 }
 
 /**
- * Raise an alert: store it, audit it, and dispatch email immediately (spec:
- * immediate, not batched). Deduped: an open alert of the same type for the
+ * Build the Microsoft Teams payload: an Adaptive Card wrapped for an Incoming
+ * Webhook — the Teams "Workflows → Post to a channel when a webhook request is
+ * received" flow, which is what a user subscribes a channel to.
+ */
+function teamsPayload(opts: {
+  subject: string;
+  body: string;
+  severity: 'warning' | 'critical';
+  nextStep: string;
+  invoiceUrl: string | null;
+}): unknown {
+  const card = {
+    type: 'AdaptiveCard',
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    version: '1.4',
+    msteams: { width: 'Full' },
+    body: [
+      {
+        type: 'TextBlock',
+        size: 'Large',
+        weight: 'Bolder',
+        wrap: true,
+        color: opts.severity === 'critical' ? 'Attention' : 'Warning',
+        text: `${opts.severity === 'critical' ? '🔴' : '🟠'} ${opts.subject}`,
+      },
+      { type: 'TextBlock', wrap: true, text: opts.body },
+      {
+        type: 'FactSet',
+        facts: [
+          { title: 'Severity', value: opts.severity },
+          { title: 'Next step', value: opts.nextStep },
+        ],
+      },
+    ],
+    actions: opts.invoiceUrl
+      ? [{ type: 'Action.OpenUrl', title: 'Open in Finny', url: opts.invoiceUrl }]
+      : [],
+  };
+  return {
+    type: 'message',
+    attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content: card }],
+  };
+}
+
+async function postToTeams(url: string, payload: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Teams webhook returned ${res.status}: ${text.slice(0, 200)}`);
+  }
+}
+
+/**
+ * Raise an alert: store it, audit it, and post it to the Teams webhook
+ * immediately (spec: immediate, not batched). Deduped: an open alert of the same type for the
  * same invoice (or same system-level type) within the last hour is not
  * re-raised.
  */
@@ -155,14 +210,13 @@ export async function raiseAlert(type: AlertType, ctx: AlertContext = {}): Promi
   if (existing) return null;
 
   const template = TEMPLATES[type];
-  const settings = getSettings();
-  const recipients = settings.alert_recipients.join(', ');
   const id = newId();
   const subject = template.subject(ctx);
   const body = `${template.body(ctx)}\n\nSuggested next step: ${template.nextStep}\n\n— Finny`;
+  const url = webhookUrl();
 
   run(
-    `INSERT INTO alerts (id, type, severity, invoice_id, subject, message, next_step, status, created_at, email_to, email_status)
+    `INSERT INTO alerts (id, type, severity, invoice_id, subject, message, next_step, status, created_at, delivery_target, delivery_status)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 'logged')`,
     id,
     type,
@@ -172,25 +226,34 @@ export async function raiseAlert(type: AlertType, ctx: AlertContext = {}): Promi
     body,
     template.nextStep,
     nowIso(),
-    recipients,
+    url ? urlHost(url) : null,
   );
   audit(ctx.invoiceId ?? null, 'alert_raised', 'system', { alert_type: type, subject });
 
-  const smtp = getTransporter();
-  if (smtp) {
+  if (url) {
     try {
-      await smtp.sendMail({ from: config.smtp.from, to: recipients, subject, text: body });
-      run(`UPDATE alerts SET email_status = 'sent', email_sent_at = ? WHERE id = ?`, nowIso(), id);
+      await postToTeams(
+        url,
+        teamsPayload({
+          subject,
+          // Card body drops the inline "Open in Finny" link — it becomes a button.
+          body: template.body(ctx).replace(/\n+Open in Finny:\s*\S+/g, '').trim(),
+          severity: template.severity,
+          nextStep: template.nextStep,
+          invoiceUrl: ctx.invoiceId ? `${config.appUrl}/invoices/${ctx.invoiceId}` : null,
+        }),
+      );
+      run(`UPDATE alerts SET delivery_status = 'sent', delivery_at = ? WHERE id = ?`, nowIso(), id);
     } catch (err) {
       run(
-        `UPDATE alerts SET email_status = 'failed', email_error = ? WHERE id = ?`,
+        `UPDATE alerts SET delivery_status = 'failed', delivery_error = ? WHERE id = ?`,
         err instanceof Error ? err.message : String(err),
         id,
       );
-      console.error(`[alerts] SMTP send failed for ${id}:`, err);
+      console.error(`[alerts] Teams webhook post failed for ${id}:`, err);
     }
   } else {
-    console.warn(`[alerts] ${subject} (SMTP not configured — alert stored and visible in UI)`);
+    console.warn(`[alerts] ${subject} (no alert webhook configured — stored and visible in UI)`);
   }
   return id;
 }
@@ -208,10 +271,10 @@ function mapAlert(r: Record<string, unknown>): Alert {
     created_at: String(r.created_at),
     acknowledged_by: r.acknowledged_by === null ? null : String(r.acknowledged_by),
     acknowledged_at: r.acknowledged_at === null ? null : String(r.acknowledged_at),
-    email_to: r.email_to === null ? null : String(r.email_to),
-    email_status: r.email_status as Alert['email_status'],
-    email_error: r.email_error === null ? null : String(r.email_error),
-    email_sent_at: r.email_sent_at === null ? null : String(r.email_sent_at),
+    delivery_target: r.delivery_target === null ? null : String(r.delivery_target),
+    delivery_status: r.delivery_status as Alert['delivery_status'],
+    delivery_error: r.delivery_error === null ? null : String(r.delivery_error),
+    delivery_at: r.delivery_at === null ? null : String(r.delivery_at),
   };
 }
 

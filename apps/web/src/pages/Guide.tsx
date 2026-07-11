@@ -367,7 +367,7 @@ export default function GuidePage() {
               Finny's core promise: <strong>nothing fails silently</strong>. Unreadable files, invoices
               unreviewed past the {settings.review_sla_hours}-hour SLA, Sage export problems, Teams
               failures and mailbox outages each raise an alert immediately
-              {settings.alert_recipients.length > 0 ? <> and email <code>{settings.alert_recipients.join(', ')}</code></> : ''} —
+              {settings.alert_webhook_url ? <> and post to your <strong>Teams</strong> channel</> : ''} —
               each one says what failed, which invoice, and the next step.
             </p>
             <Term label="Acknowledge">“I'm on it.” The alert stays visible.</Term>

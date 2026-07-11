@@ -9,7 +9,7 @@ export default function SettingsPage() {
   const { user, settings, approvers, refreshMeta, refreshOverview } = useMeta();
   const isLead = user.role === 'lead';
   const [draft, setDraft] = useState<Settings>(settings);
-  const [recipients, setRecipients] = useState(settings.alert_recipients.join(', '));
+  const [webhookUrl, setWebhookUrl] = useState(settings.alert_webhook_url);
   const [status, setStatus] = useState<ConnectorStatus | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -245,8 +245,14 @@ export default function SettingsPage() {
             <span className="muted small">Low-confidence invoice untouched this long → alert email.</span>
           </label>
           <label className="field field-wide">
-            <span className="field-label">Alert recipients (comma separated)</span>
-            <input disabled={dis} value={recipients} onChange={(e) => setRecipients(e.target.value)} />
+            <span className="field-label">Teams alert webhook URL</span>
+            <input disabled={dis} value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://…/workflows/…" />
+            <span className="muted small">
+              In Teams: <strong>Workflows → “Post to a channel when a webhook request is received”</strong>,
+              choose the channel, and paste the generated URL here. Each failure posts there as a card.
+              Leave blank to keep alerts in-app only.
+            </span>
           </label>
           <div className="field">
             <span className="field-label">Rule changes go live…</span>
@@ -270,7 +276,7 @@ export default function SettingsPage() {
             confidence_threshold: draft.confidence_threshold,
             review_sla_hours: draft.review_sla_hours,
             rule_apply: draft.rule_apply,
-            alert_recipients: recipients.split(',').map((s) => s.trim()).filter(Boolean),
+            alert_webhook_url: webhookUrl.trim(),
           })}>
             Save
           </button>
@@ -699,8 +705,8 @@ export default function SettingsPage() {
                     : 'CSV batch files imported by hand — set SAGE_PROVIDER=hyperaccounts for one-touch posting'}
                 </td>
               </tr>
-              <tr><td>Alert email</td><td><code>{status.email_provider}</code></td>
-                <td className="muted">{status.email_provider === 'log' ? 'SMTP not configured — alerts stored & shown in the UI' : 'sending via SMTP'}</td></tr>
+              <tr><td>Alerts</td><td><code>{status.alerts_channel}</code></td>
+                <td className="muted">{status.alerts_channel === 'off' ? 'no webhook set — alerts stored & shown in the UI' : 'posting to Teams via webhook'}</td></tr>
               <tr><td>Sign-in</td><td><code>{status.auth_provider}</code></td>
                 <td className="muted">{status.auth_provider === 'dev' ? 'dev sign-in — Entra ID SSO seam documented in the README' : ''}</td></tr>
             </tbody>

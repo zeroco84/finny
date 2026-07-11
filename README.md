@@ -7,7 +7,7 @@ a human confirms once, and Finny produces the Sage 50 import batch and the Teams
 Every correction teaches an inspectable rule; every failure alerts a named human immediately.
 
 Built to the *Finny v1* product spec (July 2026). Runs fully offline out of the box with mock
-providers; each external integration (Graph mail, Claude extraction, Teams Approvals, SMTP) is a
+providers; each external integration (Graph mail, Claude extraction, Teams Approvals, Teams alerts) is a
 config switch away.
 
 ---
@@ -47,8 +47,8 @@ approvals, and one open unreadable-attachment alert. Re-seed anytime with `npm r
 5. **Sage.** The Sage page batches confirmed invoices into a `FINNY_SAGE_*.csv` (audit-trail PI
    import format) and tracks generated → imported.
 6. **Alerts.** Simulate a *Corrupt attachment*: the invoice lands in Failed and a distinct,
-   human-readable alert (with next step) is raised immediately — emailed if SMTP is configured,
-   stored and shown in the UI either way.
+   human-readable alert (with next step) is raised immediately — posted to your Teams channel if an
+   alert webhook is configured, stored and shown in the UI either way.
 7. **Dashboard.** Field-level AI-vs-human accuracy against the 85% go-live gate, routing accuracy,
    the weekly correction-rate trend, and rule stability — the evidence the Lead uses before
    flipping Settings → Mode to live.
@@ -74,7 +74,7 @@ with an actionable alert) into `apps/server/data/inbox/`
 | Lead approval of rule changes | `rule_apply` setting (per type: category auto / approver review by default) | configurable in Settings |
 | Sage 50 batch export | `sage.ts` + Sage page | CSV matching the AP posting sheet, one file per entity |
 | Teams Approvals | `approvals/approvals.ts` | `mock` (simulator) → `APPROVALS_PROVIDER=graph` (beta endpoint) |
-| Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → SMTP email when configured |
+| Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → Teams webhook (`ALERT_WEBHOOK_URL`) when configured |
 | Audit trail | `audit_events` table, timeline on every invoice | — |
 | Duplicate detection (P1) | `findDuplicate` + warning banners | same vendor + invoice ref |
 | Non-invoice handling | doc-type classification in extraction; statements/remittances auto-file to Completed (audited, reopenable) — "other" still goes to review | same in both providers |
@@ -121,7 +121,7 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
 | `ANTHROPIC_API_KEY` | switches extraction to Claude (`EXTRACTION_MODEL`, default `claude-opus-4-8`) |
 | `MAIL_PROVIDER=graph` + `GRAPH_*` | polls the real shared mailbox |
 | `APPROVALS_PROVIDER=graph` | creates real Teams Approvals via Graph |
-| `SMTP_*` | alert emails actually send (otherwise logged + shown in UI) |
+| `ALERT_WEBHOOK_URL` | failure alerts post to a Teams channel as a card (otherwise logged + shown in UI) |
 | `PORT`, `DATA_DIR`, `APP_URL` | plumbing; `APP_URL` is used in alert-email links |
 
 ### Wiring up Microsoft Graph (mailbox)
