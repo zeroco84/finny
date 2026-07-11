@@ -61,6 +61,21 @@ interface GraphAttachment {
   contentType: string | null;
   contentBytes?: string;
   size: number;
+  // Inline body content (signature logos, banners, tracking pixels) carries
+  // isInline=true and a Content-ID that the HTML body references via cid:.
+  isInline?: boolean;
+  contentId?: string | null;
+}
+
+/**
+ * Signature logos, marketing banners and tracking pixels ride along in the
+ * message body as inline attachments — flagged by isInline, or referenced by a
+ * Content-ID even when a sender leaves isInline unset. They are never invoices,
+ * so ingesting them produced junk invoices and false unreadable/extraction
+ * alerts. Real invoice attachments are never inline.
+ */
+export function isInlineAttachment(att: { isInline?: boolean; contentId?: string | null }): boolean {
+  return Boolean(att.isInline || att.contentId);
 }
 
 /**
@@ -105,6 +120,12 @@ export async function pollGraphMailbox(): Promise<void> {
         );
         for (const att of atts.value) {
           if (att['@odata.type'] !== '#microsoft.graph.fileAttachment' || !att.contentBytes) continue;
+          if (isInlineAttachment(att)) {
+            console.log(
+              `[ingest] skipped inline attachment "${att.name}" (${att.contentType ?? 'unknown'}, ${att.size ?? 0}B) on message ${msg.id}`,
+            );
+            continue;
+          }
           await ingestAttachment(Buffer.from(att.contentBytes, 'base64'), att.name, {
             source: 'graph_mail',
             emailFrom: msg.from?.emailAddress?.address ?? null,
