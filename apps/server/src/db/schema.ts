@@ -129,10 +129,10 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at TEXT NOT NULL,
   acknowledged_by TEXT,
   acknowledged_at TEXT,
-  email_to TEXT,
-  email_status TEXT NOT NULL DEFAULT 'logged',
-  email_error TEXT,
-  email_sent_at TEXT
+  delivery_target TEXT,
+  delivery_status TEXT NOT NULL DEFAULT 'logged',
+  delivery_error TEXT,
+  delivery_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
 

@@ -31,7 +31,7 @@ import {
   retireRule,
   updateRule,
 } from '../services/rules.js';
-import { emailProviderName, listAlerts, openAlertCount, setAlertStatus } from '../services/alerts.js';
+import { alertsChannelName, listAlerts, openAlertCount, setAlertStatus } from '../services/alerts.js';
 import {
   batchFilePath,
   exportPool,
@@ -208,7 +208,7 @@ export function buildRouter(): Router {
       mail_provider: config.mailProvider,
       extraction_provider: config.extractionProvider,
       approvals_provider: config.approvalsProvider,
-      email_provider: emailProviderName(),
+      alerts_channel: alertsChannelName(),
       auth_provider: config.authProvider,
       sage_provider: config.sage.provider,
       // Which entities have a HyperAccounts server configured — independent of

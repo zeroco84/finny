@@ -45,6 +45,17 @@ function migrate(database: DatabaseSync): void {
     updated_at TEXT NOT NULL,
     updated_by TEXT
   )`);
+  // Alerts moved from email to a Teams webhook: rename the email_* delivery
+  // columns to channel-agnostic delivery_* (preserving existing rows).
+  const alertCols = database.prepare('PRAGMA table_info(alerts)').all() as { name: string }[];
+  if (alertCols.some((c) => c.name === 'email_status') && !alertCols.some((c) => c.name === 'delivery_status')) {
+    database.exec('ALTER TABLE alerts RENAME COLUMN email_to TO delivery_target');
+    database.exec('ALTER TABLE alerts RENAME COLUMN email_status TO delivery_status');
+    database.exec('ALTER TABLE alerts RENAME COLUMN email_error TO delivery_error');
+    database.exec('ALTER TABLE alerts RENAME COLUMN email_sent_at TO delivery_at');
+  }
+  // Retired setting: alerts moved from an email recipient list to a webhook.
+  database.exec("DELETE FROM settings WHERE key = 'alert_recipients'");
 }
 
 export function getDb(): DatabaseSync {

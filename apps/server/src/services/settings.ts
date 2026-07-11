@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'shadow',
   confidence_threshold: 0.75,
   review_sla_hours: 4,
-  alert_recipients: ['finance-alerts@example.com'],
+  alert_webhook_url: '',
   entities: [
     'Meadowvale Developments Ltd',
     'Meadowvale Construction Ltd',

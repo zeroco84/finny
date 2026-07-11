@@ -40,7 +40,7 @@ export default function AlertsPage() {
       </div>
       <p className="muted">
         Every failure — unreadable file, stuck low-confidence invoice, Sage or Teams error, mailbox outage —
-        raises one of these immediately and emails the finance alert list. Nothing fails silently.
+        raises one of these immediately and posts it to your subscribed Teams channel. Nothing fails silently.
       </p>
 
       {alerts === null ? (
@@ -62,9 +62,9 @@ export default function AlertsPage() {
               <div className="alert-meta">
                 <span>{dateTime(alert.created_at)}</span>
                 <span>
-                  {alert.email_status === 'sent' && `emailed to ${alert.email_to} at ${dateTime(alert.email_sent_at)}`}
-                  {alert.email_status === 'logged' && `would email ${alert.email_to} (SMTP not configured — see README)`}
-                  {alert.email_status === 'failed' && `email FAILED: ${alert.email_error}`}
+                  {alert.delivery_status === 'sent' && `posted to Teams (${alert.delivery_target}) at ${dateTime(alert.delivery_at)}`}
+                  {alert.delivery_status === 'logged' && 'not sent — no alert webhook set (Settings → Thresholds & alerts)'}
+                  {alert.delivery_status === 'failed' && `Teams post FAILED: ${alert.delivery_error}`}
                 </span>
                 {alert.invoice_id && <Link to={`/invoices/${alert.invoice_id}`}>Open invoice →</Link>}
               </div>

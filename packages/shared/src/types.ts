@@ -231,10 +231,12 @@ export interface Alert {
   created_at: string;
   acknowledged_by: string | null;
   acknowledged_at: string | null;
-  email_to: string | null;
-  email_status: 'sent' | 'logged' | 'failed';
-  email_error: string | null;
-  email_sent_at: string | null;
+  /** Notification delivery: `sent` to the Teams webhook, `failed`, or `logged`
+   *  (stored only — no webhook configured). */
+  delivery_target: string | null; // the Teams webhook host, or null
+  delivery_status: 'sent' | 'logged' | 'failed';
+  delivery_error: string | null;
+  delivery_at: string | null;
 }
 
 export interface SageBatch {
@@ -258,7 +260,9 @@ export interface Settings {
   mode: 'shadow' | 'live';
   confidence_threshold: number; // 0..1 — below this a field is flagged
   review_sla_hours: number; // low-confidence invoice untouched this long -> alert
-  alert_recipients: string[];
+  /** Teams-subscribable Incoming Webhook URL alerts are POSTed to (empty = alerts
+   *  are stored and shown in the UI only). */
+  alert_webhook_url: string;
   categories: Category[];
   /** Legal entities invoices may be addressed to (each = a Sage company dataset). */
   entities: string[];
@@ -275,7 +279,8 @@ export interface ConnectorStatus {
   mail_provider: string;
   extraction_provider: string;
   approvals_provider: string;
-  email_provider: string;
+  /** How failure alerts are delivered: 'webhook' (Teams) or 'off'. */
+  alerts_channel: string;
   auth_provider: string;
   /** csv = manual batch import; hyperaccounts = one-touch API posting into Sage 50. */
   sage_provider: string;
