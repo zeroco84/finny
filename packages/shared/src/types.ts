@@ -258,6 +258,10 @@ export interface SageBatch {
 
 export interface Settings {
   mode: 'shadow' | 'live';
+  /** Claude model id used for AI extraction (empty = the deployment default).
+   *  Picked by the AP Lead in Settings — the API key is set there too but is
+   *  write-only and never returned in this object. */
+  extraction_model: string;
   confidence_threshold: number; // 0..1 — below this a field is flagged
   review_sla_hours: number; // low-confidence invoice untouched this long -> alert
   /** Teams-subscribable Incoming Webhook URL alerts are POSTed to (empty = alerts
@@ -275,9 +279,20 @@ export interface Settings {
   rule_apply: { category: 'auto' | 'review'; approver: 'auto' | 'review' };
 }
 
+/** One model returned by GET /models (the Anthropic /v1/models list). */
+export interface AiModel {
+  id: string;
+  display_name: string;
+}
+
 export interface ConnectorStatus {
   mail_provider: string;
   extraction_provider: string;
+  /** Claude model AI extraction will use (the effective value). */
+  extraction_model: string;
+  /** Whether an Anthropic API key is configured, and where from. */
+  anthropic_key_set: boolean;
+  anthropic_key_source: 'settings' | 'env' | 'none';
   approvals_provider: string;
   /** How failure alerts are delivered: 'webhook' (Teams) or 'off'. */
   alerts_channel: string;

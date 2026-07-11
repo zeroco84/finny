@@ -118,7 +118,7 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
 
 | Variable | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` | switches extraction to Claude (`EXTRACTION_MODEL`, default `claude-opus-4-8`) |
+| `ANTHROPIC_API_KEY` | switches extraction to Claude — key + model are also settable in-app (Settings → AI extraction, AP Lead; stored value wins). `EXTRACTION_MODEL` default `claude-opus-4-8` |
 | `MAIL_PROVIDER=graph` + `GRAPH_*` | polls the real shared mailbox |
 | `APPROVALS_PROVIDER=graph` | creates real Teams Approvals via Graph |
 | `ALERT_WEBHOOK_URL` | failure alerts post to a Teams channel as a card (otherwise logged + shown in UI) |

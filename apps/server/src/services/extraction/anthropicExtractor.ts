@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { config } from '../../config.js';
+import { getAnthropicKey, getExtractionModel } from '../settings.js';
 import {
   UnreadableDocumentError,
   type ExtractionResult,
@@ -9,10 +9,18 @@ import {
 } from './extractor.js';
 import { parseMoneyToCents } from '../../domain/util.js';
 
-let client: Anthropic | null = null;
+// Cached by key so a key changed in Settings takes effect without a restart.
+let client: { key: string; anthropic: Anthropic } | null = null;
 function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: config.anthropicKey });
-  return client;
+  const key = getAnthropicKey();
+  if (!client || client.key !== key) client = { key, anthropic: new Anthropic({ apiKey: key }) };
+  return client.anthropic;
+}
+
+/** The models this API key can use — powers the Settings model picker. */
+export async function listAvailableModels(): Promise<{ id: string; display_name: string }[]> {
+  const page = await getClient().models.list({ limit: 100 });
+  return page.data.map((m) => ({ id: m.id, display_name: m.display_name }));
 }
 
 const MAX_DOCUMENT_BYTES = 30 * 1024 * 1024; // API request cap is 32MB
@@ -191,7 +199,7 @@ export const anthropicExtractor: Extractor = {
     let response: Anthropic.Message;
     try {
       response = await getClient().messages.create({
-        model: config.extractionModel,
+        model: getExtractionModel(),
         max_tokens: 16000,
         system: systemPrompt(context),
         tools: [EXTRACTION_TOOL],

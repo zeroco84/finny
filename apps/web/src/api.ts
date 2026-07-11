@@ -1,4 +1,5 @@
 import type {
+  AiModel,
   Alert,
   Approver,
   ApproverDirectory,
@@ -147,6 +148,9 @@ export const api = {
 
   settings: () => get<Settings>('/settings'),
   updateSettings: (patchBody: Partial<Settings>) => patch<Settings>('/settings', patchBody),
+  setAnthropicKey: (key: string) =>
+    post<{ set: boolean; source: 'settings' | 'env' | 'none' }>('/settings/anthropic-key', { key }),
+  aiModels: () => get<AiModel[]>('/models'),
   approvers: () => get<Approver[]>('/approvers'),
   addApprover: (body: { name: string; email: string }) => post<Approver>('/approvers', body),
   updateApprover: (id: string, body: Partial<Approver>) => patch<Approver>(`/approvers/${id}`, body),
