@@ -447,8 +447,8 @@ export default function GuidePage() {
               <p className="muted">
                 This copy runs on simulated connectors: <strong>Simulate incoming ▾</strong> fabricates
                 invoices (including a corrupt one to see the alert flow), the invoice page includes an
-                approvals simulator so you can play the manager, and alert emails are shown in the UI
-                instead of being sent. Nothing touches the real mailbox, Sage, or Teams.
+                approvals simulator so you can play the manager, and alerts are shown in the UI
+                instead of being posted to Teams. Nothing touches the real mailbox, Sage, or Teams.
               </p>
             </section>
           )}

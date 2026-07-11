@@ -1,6 +1,6 @@
 import type { LineItem } from '@finny/shared';
 import { config } from '../../config.js';
-import { getSettings, listApprovers } from '../settings.js';
+import { extractionProviderActive, getSettings, listApprovers } from '../settings.js';
 import { findExtractionHints, listRules } from '../rules.js';
 
 export interface ExtractedField {
@@ -79,7 +79,7 @@ export interface Extractor {
 export class UnreadableDocumentError extends Error {}
 
 export async function getExtractor(): Promise<Extractor> {
-  if (config.extractionProvider === 'anthropic') {
+  if (extractionProviderActive() === 'anthropic') {
     const { anthropicExtractor } = await import('./anthropicExtractor.js');
     return anthropicExtractor;
   }

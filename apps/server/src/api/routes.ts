@@ -47,11 +47,15 @@ import { validateAgainstSage } from '../services/sage/reference.js';
 import { pullSummary, storePulledNominals } from '../services/sage/nominals.js';
 import { dashboardMetrics, volumeMetrics } from '../services/metrics.js';
 import {
+  anthropicKeyInfo,
   approversGroupConfigured,
   approversProvider,
+  extractionProviderActive,
   getApprover,
+  getExtractionModel,
   getSettings,
   listApprovers,
+  setAnthropicKey,
   syncApprovers,
   updateSettings,
 } from '../services/settings.js';
@@ -204,9 +208,13 @@ export function buildRouter(): Router {
   });
 
   router.get('/status', (_req, res) => {
+    const key = anthropicKeyInfo();
     const status: ConnectorStatus = {
       mail_provider: config.mailProvider,
-      extraction_provider: config.extractionProvider,
+      extraction_provider: extractionProviderActive(),
+      extraction_model: getExtractionModel(),
+      anthropic_key_set: key.set,
+      anthropic_key_source: key.source,
       approvals_provider: config.approvalsProvider,
       alerts_channel: alertsChannelName(),
       auth_provider: config.authProvider,
@@ -582,6 +590,36 @@ export function buildRouter(): Router {
       audit(null, 'settings_changed', req.user!.email, { keys: Object.keys(req.body ?? {}) });
     }
     res.json(updated);
+  });
+
+  // ── AI extraction: API key + model picker (AP Lead) ───────────────────────
+  // The key is write-only — never returned by any GET (see getSettings()).
+  const anthropicKeySchema = z.object({ key: z.string().max(400) });
+  router.post('/settings/anthropic-key', requireLead, (req, res) => {
+    const parsed = anthropicKeySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'A "key" string is required (send "" to clear it)' });
+      return;
+    }
+    setAnthropicKey(parsed.data.key);
+    // Audit the change, never the value.
+    audit(null, 'anthropic_key_changed', req.user!.email, { set: parsed.data.key.trim().length > 0 });
+    res.json(anthropicKeyInfo());
+  });
+
+  // Ask Anthropic which models this key can use, so the Lead can pick a cheaper
+  // one than the default.
+  router.get('/models', requireLead, async (_req, res) => {
+    if (!anthropicKeyInfo().set) {
+      res.status(400).json({ error: 'No Anthropic API key configured — add one first.' });
+      return;
+    }
+    try {
+      const { listAvailableModels } = await import('../services/extraction/anthropicExtractor.js');
+      res.json(await listAvailableModels());
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Could not fetch models from Anthropic' });
+    }
   });
 
   router.get('/approvers', (_req, res) => {

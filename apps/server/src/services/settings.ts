@@ -6,6 +6,7 @@ import { directoryMode, type DirectoryPerson, fetchEntraGroupMembers } from './e
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'shadow',
+  extraction_model: '', // '' = use the deployment default (config.extractionModel)
   confidence_threshold: 0.75,
   review_sla_hours: 4,
   alert_webhook_url: '',
@@ -85,6 +86,9 @@ export function getSettings(): Settings {
     out[row.key] = jsonParse(row.value, (DEFAULT_SETTINGS as unknown as Record<string, unknown>)[row.key]);
   }
   const settings = out as unknown as Settings;
+  // The Anthropic API key is stored in this table but is a secret — never let it
+  // leave in the Settings object the API returns. Read it via getAnthropicKey().
+  delete (settings as unknown as Record<string, unknown>).anthropic_api_key;
   // Shape migration: projects stored before depts existed get theirs
   // backfilled (seeded codes from the defaults, otherwise blank -> fallback).
   settings.projects = settings.projects.map((p) => ({
@@ -92,6 +96,52 @@ export function getSettings(): Settings {
     dept: p.dept ?? DEFAULT_SETTINGS.projects.find((d) => d.code === p.code)?.dept ?? '',
   }));
   return settings;
+}
+
+const ANTHROPIC_KEY_ROW = 'anthropic_api_key';
+
+/** The effective Anthropic API key — a value set in Settings wins over the env. */
+export function getAnthropicKey(): string {
+  const row = one<{ value: string }>('SELECT value FROM settings WHERE key = ?', ANTHROPIC_KEY_ROW);
+  const stored = row ? jsonParse<string>(row.value, '') : '';
+  return (stored || config.anthropicKey || '').trim();
+}
+
+/** Store (or clear, when empty) the Anthropic API key. Never returned by the API. */
+export function setAnthropicKey(key: string): void {
+  const trimmed = key.trim();
+  if (!trimmed) {
+    run('DELETE FROM settings WHERE key = ?', ANTHROPIC_KEY_ROW);
+    return;
+  }
+  run(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    ANTHROPIC_KEY_ROW,
+    JSON.stringify(trimmed),
+  );
+}
+
+/** Whether a key is configured and where it comes from (for the Settings UI). */
+export function anthropicKeyInfo(): { set: boolean; source: 'settings' | 'env' | 'none' } {
+  const stored = one<{ value: string }>('SELECT value FROM settings WHERE key = ?', ANTHROPIC_KEY_ROW);
+  if (stored && jsonParse<string>(stored.value, '').trim()) return { set: true, source: 'settings' };
+  if (config.anthropicKey.trim()) return { set: true, source: 'env' };
+  return { set: false, source: 'none' };
+}
+
+/** The effective extraction model — the Settings choice wins over the env default. */
+export function getExtractionModel(): string {
+  return (getSettings().extraction_model || config.extractionModel).trim();
+}
+
+/**
+ * Effective extraction provider: 'anthropic' when an API key is available (env
+ * or Settings), unless EXTRACTION_PROVIDER=mock explicitly forces the offline
+ * parser.
+ */
+export function extractionProviderActive(): 'anthropic' | 'mock' {
+  if (config.extractionProviderEnv === 'mock') return 'mock';
+  return getAnthropicKey() ? 'anthropic' : 'mock';
 }
 
 export function updateSettings(patch: Partial<Settings>): Settings {

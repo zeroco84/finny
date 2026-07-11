@@ -51,7 +51,11 @@ export const config = {
   },
 
   extractionProvider: extractionProvider as 'anthropic' | 'mock',
+  // The raw env value, so an explicit EXTRACTION_PROVIDER=mock keeps the mock
+  // parser even when an API key is later set in Settings.
+  extractionProviderEnv: env('EXTRACTION_PROVIDER'),
   anthropicKey,
+  // Default model when the AP Lead hasn't picked one in Settings.
   extractionModel: env('EXTRACTION_MODEL', 'claude-opus-4-8'),
 
   approvalsProvider: env('APPROVALS_PROVIDER', 'mock') as 'mock' | 'graph',

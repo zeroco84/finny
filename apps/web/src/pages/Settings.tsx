@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ApproverDirectory, ConnectorStatus, Settings, TeamDirectory, TeamRole } from '@finny/shared';
+import type { AiModel, ApproverDirectory, ConnectorStatus, Settings, TeamDirectory, TeamRole } from '@finny/shared';
 import { api, type SageReferenceCheck } from '../api';
 import { dateTime } from '../format';
 import { useMeta } from '../meta';
@@ -24,6 +24,10 @@ export default function SettingsPage() {
   const [teamBusy, setTeamBusy] = useState(false);
   const [approverDir, setApproverDir] = useState<ApproverDirectory | null>(null);
   const [approverSyncBusy, setApproverSyncBusy] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [models, setModels] = useState<AiModel[] | null>(null);
+  const [modelsBusy, setModelsBusy] = useState(false);
 
   const sageConnected = (status?.sage_entities.length ?? 0) > 0;
   const hasPulled = nominalSummary.length > 0;
@@ -110,6 +114,35 @@ export default function SettingsPage() {
       setTimeout(() => setNotice(null), 4000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
+    }
+  }
+
+  async function saveApiKey() {
+    setKeyBusy(true);
+    setError(null);
+    try {
+      const clearing = !apiKey.trim();
+      const r = await api.setAnthropicKey(apiKey);
+      setApiKey('');
+      setStatus(await api.status());
+      setNotice(clearing ? 'API key cleared.' : `API key saved (source: ${r.source}).`);
+      setTimeout(() => setNotice(null), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the API key');
+    } finally {
+      setKeyBusy(false);
+    }
+  }
+
+  async function loadModels() {
+    setModelsBusy(true);
+    setError(null);
+    try {
+      setModels(await api.aiModels());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not fetch models');
+    } finally {
+      setModelsBusy(false);
     }
   }
 
@@ -242,7 +275,7 @@ export default function SettingsPage() {
             <span className="field-label">Review SLA (hours)</span>
             <input type="number" min={1} disabled={dis} value={draft.review_sla_hours}
               onChange={(e) => setDraft({ ...draft, review_sla_hours: Number(e.target.value) })} />
-            <span className="muted small">Low-confidence invoice untouched this long → alert email.</span>
+            <span className="muted small">Low-confidence invoice untouched this long → raises an alert.</span>
           </label>
           <label className="field field-wide">
             <span className="field-label">Teams alert webhook URL</span>
@@ -279,6 +312,67 @@ export default function SettingsPage() {
             alert_webhook_url: webhookUrl.trim(),
           })}>
             Save
+          </button>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>AI extraction</h2>
+        <p className="muted small">
+          Finny reads each invoice with Claude.{' '}
+          {status && (status.extraction_provider === 'anthropic'
+            ? <>Currently using <code>{status.extraction_model}</code>{status.anthropic_key_source === 'env' ? ' (key from environment)' : ''}.</>
+            : <>Offline mock parser — add an API key below to switch on Claude extraction.</>)}
+        </p>
+        <div className="field-grid">
+          <label className="field field-wide">
+            <span className="field-label">
+              Anthropic API key{' '}
+              {status?.anthropic_key_set && <span className="chip status-approved">configured ({status.anthropic_key_source})</span>}
+            </span>
+            <input type="password" autoComplete="off" disabled={dis} value={apiKey}
+              placeholder={status?.anthropic_key_set ? '•••••••• — enter a new key to replace' : 'sk-ant-…'}
+              onChange={(e) => setApiKey(e.target.value)} />
+            <span className="muted small">
+              Stored server-side and never shown again. Save with the box empty to clear it (Finny then falls back to the environment key, if set).
+            </span>
+          </label>
+        </div>
+        {isLead && (
+          <div className="row-actions">
+            <button className="btn btn-small btn-primary" disabled={keyBusy || (!apiKey.trim() && !status?.anthropic_key_set)}
+              onClick={() => void saveApiKey()}>
+              {keyBusy ? 'Saving…' : apiKey.trim() ? 'Save key' : 'Clear key'}
+            </button>
+          </div>
+        )}
+        <div className="field-grid" style={{ marginTop: 12 }}>
+          <label className="field field-wide">
+            <span className="field-label">Extraction model</span>
+            <div className="row-actions">
+              <select disabled={dis} value={draft.extraction_model}
+                onChange={(e) => setDraft({ ...draft, extraction_model: e.target.value })}>
+                <option value="">Deployment default ({status?.extraction_model || 'claude-opus-4-8'})</option>
+                {models?.map((m) => <option key={m.id} value={m.id}>{m.display_name} — {m.id}</option>)}
+                {draft.extraction_model && !models?.some((m) => m.id === draft.extraction_model) && (
+                  <option value={draft.extraction_model}>{draft.extraction_model}</option>
+                )}
+              </select>
+              {isLead && (
+                <button className="btn btn-small" disabled={modelsBusy || !status?.anthropic_key_set} onClick={() => void loadModels()}>
+                  {modelsBusy ? 'Loading…' : 'Query available models'}
+                </button>
+              )}
+            </div>
+            <span className="muted small">
+              Opus is the most capable and priciest; Haiku and Sonnet are far cheaper and plenty for invoice extraction. Pick one, then Save.
+            </span>
+          </label>
+        </div>
+        {isLead && (
+          <button className="btn btn-small btn-primary"
+            onClick={() => void save({ extraction_model: draft.extraction_model }, 'Extraction model saved.')}>
+            Save model
           </button>
         )}
       </div>
@@ -690,7 +784,7 @@ export default function SettingsPage() {
                 </td>
               </tr>
               <tr><td>Extraction</td><td><code>{status.extraction_provider}</code></td>
-                <td className="muted">{status.extraction_provider === 'mock' ? 'offline text parser — set ANTHROPIC_API_KEY for Claude extraction' : 'Claude document extraction'}</td></tr>
+                <td className="muted">{status.extraction_provider === 'mock' ? 'offline text parser — add an Anthropic API key (AI extraction card) for Claude' : <>Claude — <code>{status.extraction_model}</code></>}</td></tr>
               <tr>
                 <td>Teams Approvals</td>
                 <td><code>{status.approvals_provider}</code></td>
