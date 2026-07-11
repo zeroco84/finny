@@ -39,10 +39,21 @@ export interface SageReferenceCheck {
   };
 }
 
+let reqSeq = 0;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  // This app is dynamic and per-user, but a caching layer on the custom domain
+  // was serving stale authenticated GETs — e.g. the team list reverting to an
+  // old snapshot after an edit, because the browser/CDN answered the refetch
+  // from cache instead of the server. Make every GET uncacheable end-to-end:
+  // `cache: 'no-store'` bypasses the browser HTTP cache, and a unique query
+  // param stops any edge "Cache Everything" rule from matching a cached URL.
+  const isGet = !init?.method || init.method.toUpperCase() === 'GET';
+  const url = `/api${path}` + (isGet ? `${path.includes('?') ? '&' : '?'}_=${Date.now()}.${++reqSeq}` : '');
+  const res = await fetch(url, {
     headers: init?.body && !(init.body instanceof Blob) ? { 'Content-Type': 'application/json' } : undefined,
     credentials: 'same-origin',
+    cache: 'no-store',
     ...init,
   });
   if (!res.ok) {
