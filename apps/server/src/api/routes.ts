@@ -31,7 +31,15 @@ import {
   retireRule,
   updateRule,
 } from '../services/rules.js';
-import { alertsChannelName, listAlerts, openAlertCount, setAlertStatus } from '../services/alerts.js';
+import {
+  alertsChannelName,
+  isValidWebhookUrl,
+  listAlerts,
+  openAlertCount,
+  sendTestAlert,
+  setAlertStatus,
+  webhookInfo,
+} from '../services/alerts.js';
 import {
   batchFilePath,
   exportPool,
@@ -217,6 +225,7 @@ export function buildRouter(): Router {
       anthropic_key_source: key.source,
       approvals_provider: config.approvalsProvider,
       alerts_channel: alertsChannelName(),
+      alert_webhook_host: webhookInfo().host,
       auth_provider: config.authProvider,
       sage_provider: config.sage.provider,
       // Which entities have a HyperAccounts server configured — independent of
@@ -582,6 +591,15 @@ export function buildRouter(): Router {
     res.json(getSettings());
   });
   router.patch('/settings', requireLead, (req, res) => {
+    // Validate the webhook on write so an SSRF/off-tenant URL is rejected at the
+    // door (postToTeams also re-checks before every send).
+    const webhook = (req.body ?? {}).alert_webhook_url;
+    if (typeof webhook === 'string' && webhook.trim() && !isValidWebhookUrl(webhook)) {
+      res.status(400).json({
+        error: 'The webhook URL must be https on an allowed Microsoft Teams / Power Automate host.',
+      });
+      return;
+    }
     const before = getSettings();
     const updated = updateSettings(req.body ?? {});
     if (before.mode !== updated.mode) {
@@ -605,6 +623,17 @@ export function buildRouter(): Router {
     // Audit the change, never the value.
     audit(null, 'anthropic_key_changed', req.user!.email, { set: parsed.data.key.trim().length > 0 });
     res.json(anthropicKeyInfo());
+  });
+
+  // Send a one-off connectivity card to the configured Teams webhook.
+  router.post('/settings/webhook-test', requireLead, async (req, res) => {
+    try {
+      await sendTestAlert();
+      audit(null, 'alert_webhook_tested', req.user!.email, {});
+      res.json({ ok: true, host: webhookInfo().host });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Webhook test failed' });
+    }
   });
 
   // Ask Anthropic which models this key can use, so the Lead can pick a cheaper

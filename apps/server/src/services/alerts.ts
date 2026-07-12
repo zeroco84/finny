@@ -2,7 +2,7 @@ import type { Alert, AlertType } from '@finny/shared';
 import { all, one, run } from '../db/db.js';
 import { config } from '../config.js';
 import { newId, nowIso } from '../domain/util.js';
-import { getSettings } from './settings.js';
+import { getAlertWebhookUrl } from './settings.js';
 import { audit } from './audit.js';
 
 interface AlertContext {
@@ -114,7 +114,7 @@ const TEMPLATES: Record<AlertType, Template> = {
 
 /** The configured Teams webhook — a value stored in Settings wins over the env default. */
 function webhookUrl(): string {
-  return (getSettings().alert_webhook_url || config.alertWebhookUrl || '').trim();
+  return getAlertWebhookUrl();
 }
 
 export function alertsChannelName(): 'webhook' | 'off' {
@@ -128,6 +128,52 @@ function urlHost(url: string): string {
   } catch {
     return 'webhook';
   }
+}
+
+/**
+ * SSRF guard: the webhook destination is operator-settable, so restrict it to
+ * https on a Microsoft-owned host suffix (Teams connector / Power Automate /
+ * Power Platform / Logic Apps). This blocks localhost, cloud metadata and
+ * internal hosts regardless of DNS, and no credentials may be embedded.
+ */
+export function isValidWebhookUrl(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  if (u.username || u.password) return false;
+  const host = u.hostname.toLowerCase();
+  return config.alertWebhookAllowedHosts.some((suffix) => host === suffix.replace(/^\./, '') || host.endsWith(suffix));
+}
+
+/** Whether a webhook is configured and its host (never the token) — for the UI. */
+export function webhookInfo(): { configured: boolean; host: string | null } {
+  const url = webhookUrl();
+  return { configured: Boolean(url), host: url ? urlHost(url) : null };
+}
+
+/**
+ * Neutralise Adaptive-Card / Markdown control characters so untrusted invoice
+ * text (vendor, ref, filename, extractor error) cannot inject a clickable
+ * phishing link or formatting into an alert card that appears to come from Finny.
+ */
+function cardSafe(value: string): string {
+  return value.replace(/[[\]()`<>]/g, ' ').replace(/[ \t]+/g, ' ').trim();
+}
+
+function sanitizeCtx(ctx: AlertContext): AlertContext {
+  const clean = (v: string | null | undefined) => (v == null ? v : cardSafe(v));
+  return {
+    ...ctx,
+    vendor: clean(ctx.vendor),
+    invoiceRef: clean(ctx.invoiceRef),
+    attachmentName: clean(ctx.attachmentName),
+    error: clean(ctx.error),
+    extra: clean(ctx.extra),
+  };
 }
 
 /**
@@ -176,15 +222,40 @@ function teamsPayload(opts: {
 }
 
 async function postToTeams(url: string, payload: unknown): Promise<void> {
+  if (!isValidWebhookUrl(url)) {
+    throw new Error('Refusing to post: the alert webhook URL is not an allowed Microsoft Teams endpoint');
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    // Don't follow a redirect off the validated host, and don't hang forever.
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Teams webhook returned ${res.status}: ${text.slice(0, 200)}`);
+    // Never surface the upstream body — echoed into delivery_error it would be
+    // an internal-response read oracle. Log it server-side only, return status.
+    const body = await res.text().catch(() => '');
+    if (body) console.error(`[alerts] webhook ${urlHost(url)} error body:`, body.slice(0, 300));
+    throw new Error(`Teams webhook returned HTTP ${res.status}`);
   }
+}
+
+/** Post a one-off connectivity card to the configured webhook (the test button). */
+export async function sendTestAlert(): Promise<void> {
+  const url = webhookUrl();
+  if (!url) throw new Error('No alert webhook is configured');
+  await postToTeams(
+    url,
+    teamsPayload({
+      subject: '[Finny] Test alert',
+      body: 'This is a test alert from Finny. If you can see this card, the Teams webhook is wired up correctly.',
+      severity: 'warning',
+      nextStep: 'No action needed — this is only a connectivity test.',
+      invoiceUrl: null,
+    }),
+  );
 }
 
 /**
@@ -211,8 +282,11 @@ export async function raiseAlert(type: AlertType, ctx: AlertContext = {}): Promi
 
   const template = TEMPLATES[type];
   const id = newId();
-  const subject = template.subject(ctx);
-  const body = `${template.body(ctx)}\n\nSuggested next step: ${template.nextStep}\n\n— Finny`;
+  // Untrusted invoice-derived fields (vendor/ref/filename/error) are neutralised
+  // before they enter the subject/body that render in the Teams card.
+  const safeCtx = sanitizeCtx(ctx);
+  const subject = template.subject(safeCtx);
+  const body = `${template.body(safeCtx)}\n\nSuggested next step: ${template.nextStep}\n\n— Finny`;
   const url = webhookUrl();
 
   run(
@@ -237,7 +311,7 @@ export async function raiseAlert(type: AlertType, ctx: AlertContext = {}): Promi
         teamsPayload({
           subject,
           // Card body drops the inline "Open in Finny" link — it becomes a button.
-          body: template.body(ctx).replace(/\n+Open in Finny:\s*\S+/g, '').trim(),
+          body: template.body(safeCtx).replace(/\n+Open in Finny:\s*\S+/g, '').trim(),
           severity: template.severity,
           nextStep: template.nextStep,
           invoiceUrl: ctx.invoiceId ? `${config.appUrl}/invoices/${ctx.invoiceId}` : null,
