@@ -9,7 +9,8 @@ export default function SettingsPage() {
   const { user, settings, approvers, refreshMeta, refreshOverview } = useMeta();
   const isLead = user.role === 'lead';
   const [draft, setDraft] = useState<Settings>(settings);
-  const [webhookUrl, setWebhookUrl] = useState(settings.alert_webhook_url);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookBusy, setWebhookBusy] = useState(false);
   const [status, setStatus] = useState<ConnectorStatus | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +132,37 @@ export default function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Could not save the API key');
     } finally {
       setKeyBusy(false);
+    }
+  }
+
+  async function saveWebhook() {
+    setWebhookBusy(true);
+    setError(null);
+    try {
+      const clearing = !webhookUrl.trim();
+      await api.updateSettings({ alert_webhook_url: webhookUrl.trim() });
+      setWebhookUrl('');
+      setStatus(await api.status());
+      setNotice(clearing ? 'Webhook cleared — alerts stay in-app.' : 'Webhook saved.');
+      setTimeout(() => setNotice(null), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the webhook');
+    } finally {
+      setWebhookBusy(false);
+    }
+  }
+
+  async function testWebhookAlert() {
+    setWebhookBusy(true);
+    setError(null);
+    try {
+      const r = await api.testWebhook();
+      setNotice(`Test alert sent to ${r.host ?? 'the webhook'} — check the Teams channel.`);
+      setTimeout(() => setNotice(null), 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Webhook test failed');
+    } finally {
+      setWebhookBusy(false);
     }
   }
 
@@ -278,14 +310,33 @@ export default function SettingsPage() {
             <span className="muted small">Low-confidence invoice untouched this long → raises an alert.</span>
           </label>
           <label className="field field-wide">
-            <span className="field-label">Teams alert webhook URL</span>
-            <input disabled={dis} value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://…/workflows/…" />
+            <span className="field-label">
+              Teams alert webhook{' '}
+              {status?.alert_webhook_host
+                ? <span className="chip status-approved">configured ({status.alert_webhook_host})</span>
+                : <span className="chip">not set — alerts stay in-app</span>}
+            </span>
+            <input type="password" autoComplete="off" disabled={dis} value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder={status?.alert_webhook_host ? '•••••••• — paste a new URL to replace' : 'https://…/workflows/…'} />
             <span className="muted small">
               In Teams: <strong>Workflows → “Post to a channel when a webhook request is received”</strong>,
-              choose the channel, and paste the generated URL here. Each failure posts there as a card.
-              Leave blank to keep alerts in-app only.
+              choose the channel, and paste the generated URL here. Stored server-side and never shown again;
+              save with the box empty to clear it. Each failure posts there as a card.
             </span>
+            {isLead && (
+              <div className="row-actions" style={{ marginTop: 6 }}>
+                <button className="btn btn-small btn-primary"
+                  disabled={webhookBusy || (!webhookUrl.trim() && !status?.alert_webhook_host)}
+                  onClick={() => void saveWebhook()}>
+                  {webhookBusy ? 'Working…' : webhookUrl.trim() ? 'Save webhook' : 'Clear webhook'}
+                </button>
+                <button className="btn btn-small" disabled={webhookBusy || !status?.alert_webhook_host}
+                  onClick={() => void testWebhookAlert()}>
+                  Send test alert
+                </button>
+              </div>
+            )}
           </label>
           <div className="field">
             <span className="field-label">Rule changes go live…</span>
@@ -309,7 +360,6 @@ export default function SettingsPage() {
             confidence_threshold: draft.confidence_threshold,
             review_sla_hours: draft.review_sla_hours,
             rule_apply: draft.rule_apply,
-            alert_webhook_url: webhookUrl.trim(),
           })}>
             Save
           </button>

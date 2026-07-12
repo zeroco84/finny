@@ -89,6 +89,10 @@ export function getSettings(): Settings {
   // The Anthropic API key is stored in this table but is a secret — never let it
   // leave in the Settings object the API returns. Read it via getAnthropicKey().
   delete (settings as unknown as Record<string, unknown>).anthropic_api_key;
+  // The webhook URL embeds a secret token in its path — never return it to any
+  // client (read it server-side via getAlertWebhookUrl). The UI shows only the
+  // host + a configured flag, and writes are validated in the settings route.
+  delete (settings as unknown as Record<string, unknown>).alert_webhook_url;
   // Shape migration: projects stored before depts existed get theirs
   // backfilled (seeded codes from the defaults, otherwise blank -> fallback).
   settings.projects = settings.projects.map((p) => ({
@@ -119,6 +123,17 @@ export function setAnthropicKey(key: string): void {
     ANTHROPIC_KEY_ROW,
     JSON.stringify(trimmed),
   );
+}
+
+/**
+ * The effective Teams alert webhook URL. Read directly from its row (not via
+ * getSettings, which strips it) so the secret token embedded in the URL path
+ * never leaves the server.
+ */
+export function getAlertWebhookUrl(): string {
+  const row = one<{ value: string }>(`SELECT value FROM settings WHERE key = 'alert_webhook_url'`);
+  const stored = row ? jsonParse<string>(row.value, '') : '';
+  return (stored || config.alertWebhookUrl || '').trim();
 }
 
 /** Whether a key is configured and where it comes from (for the Settings UI). */
