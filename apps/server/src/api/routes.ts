@@ -742,6 +742,10 @@ export function buildRouter(): Router {
 
   // ── Simulators (mock providers only) ──────────────────────────────────────
   router.post('/simulate/invoice', async (req, res) => {
+    if (!config.simulatorEnabled) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
     if (config.mailProvider !== 'mock') {
       res.status(400).json({ error: 'Simulator is only available with MAIL_PROVIDER=mock' });
       return;
@@ -761,6 +765,10 @@ export function buildRouter(): Router {
   });
 
   router.post('/simulate/approval-decision', (req, res) => {
+    if (!config.simulatorEnabled) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
     if (config.approvalsProvider !== 'mock') {
       res.status(400).json({ error: 'Approval simulator is only available with APPROVALS_PROVIDER=mock' });
       return;
@@ -772,11 +780,12 @@ export function buildRouter(): Router {
       res.status(409).json({ error: 'No pending approval for this invoice' });
       return;
     }
-    const approver = getApprover(approval.approver_id);
+    // Attribute the decision to whoever actually triggered it, not the routed
+    // approver — a simulated decision must never masquerade as the real manager.
     const ok = recordApprovalDecision(
       approval.id,
       decision,
-      `${approver?.name ?? 'Manager'} (simulated)`,
+      `${req.user!.name} (simulated)`,
       typeof req.body?.note === 'string' ? req.body.note : null,
     );
     if (!ok) {

@@ -25,6 +25,14 @@ const anthropicKey = env('ANTHROPIC_API_KEY');
 const extractionProvider =
   env('EXTRACTION_PROVIDER') || (anthropicKey ? 'anthropic' : 'mock');
 
+const authProvider = env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra';
+// The /api/simulate/* routes fabricate invoices and approval decisions for
+// local demos. They must never be reachable in production (a signed-in user
+// could forge a manager's approval). Off unless explicitly enabled; defaults
+// on only for the dev auth provider.
+const simulatorEnabled =
+  env('ENABLE_SIMULATOR', authProvider === 'dev' ? 'true' : 'false') === 'true';
+
 export const config = {
   port: Number(env('PORT', '4787')),
   dataDir,
@@ -60,6 +68,8 @@ export const config = {
 
   approvalsProvider: env('APPROVALS_PROVIDER', 'mock') as 'mock' | 'graph',
   approvalsPollSeconds: Number(env('APPROVALS_POLL_SECONDS', '60')),
+  // Demo-only invoice/approval simulator routes; never enabled in production.
+  simulatorEnabled,
 
   // Failure alerts are POSTed as an Adaptive Card to a Teams-subscribable
   // Incoming Webhook. Set here as a default, or per-deployment in Settings
@@ -85,7 +95,7 @@ export const config = {
     entityServers: jsonEnv<Record<string, { url: string; key: string }>>('SAGE_ENTITY_SERVERS', {}),
   },
 
-  authProvider: env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra',
+  authProvider,
   // Entra ID SSO (AUTH_PROVIDER=entra). The ENTRA_* vars fall back to the
   // GRAPH_* app registration — one registration can serve both mail polling
   // (application permission) and user sign-in (web redirect URI).
