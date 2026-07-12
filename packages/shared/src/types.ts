@@ -296,6 +296,8 @@ export interface ConnectorStatus {
   approvals_provider: string;
   /** How failure alerts are delivered: 'webhook' (Teams) or 'off'. */
   alerts_channel: string;
+  /** Host of the configured webhook (never the secret token), or null. */
+  alert_webhook_host: string | null;
   auth_provider: string;
   /** csv = manual batch import; hyperaccounts = one-touch API posting into Sage 50. */
   sage_provider: string;
