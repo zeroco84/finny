@@ -67,9 +67,10 @@ export async function createApprovalRequest(
           description:
             `Category: ${row.category ?? '—'} · PO: ${row.po_number ?? '—'} · ` +
             `Reviewed by ${who} in Finny. ` +
-            // Managers are not Finny users — this signed link shows them the
-            // invoice document without an account (expires in 14 days).
-            `View the invoice: ${buildAttachmentLink(invoiceId)}`,
+            // Managers are not Finny users — this revocable, logged link shows
+            // them the invoice document without an account (expires in 14 days),
+            // scoped to this approver.
+            `View the invoice: ${buildAttachmentLink(invoiceId, { scope: 'approver', approverId, createdBy: who })}`,
           approvalType: 'basic',
           allowEmailNotification: true,
           approvers: [{ user: { id: approver.teams_user_id ?? undefined, email: approver.email } }],

@@ -94,8 +94,6 @@ export interface PurchaseInvoicePayload {
   }[];
 }
 
-/** Sage stores the doc link forever, so the tokenized link gets a long TTL. */
-const SAGE_LINK_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 /** 'T1' -> 1 (the API takes tax codes as integers). */
 export function taxCodeNumber(code: string): number {
@@ -153,7 +151,7 @@ export function buildPurchaseInvoicePayload(
         projectRef: (line.project_code ?? '').slice(0, 12),
         ...(exRef ? { exRef } : {}),
         isNegativeLine: 0,
-        externalFileURL: buildAttachmentLink(invoiceId, SAGE_LINK_TTL_MS),
+        externalFileURL: buildAttachmentLink(invoiceId, { scope: 'sage', createdBy: 'sage-export' }),
       },
     ],
   };
