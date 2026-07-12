@@ -150,6 +150,7 @@ export const api = {
   updateSettings: (patchBody: Partial<Settings>) => patch<Settings>('/settings', patchBody),
   setAnthropicKey: (key: string) =>
     post<{ set: boolean; source: 'settings' | 'env' | 'none' }>('/settings/anthropic-key', { key }),
+  testWebhook: () => post<{ ok: boolean; host: string | null }>('/settings/webhook-test', {}),
   aiModels: () => get<AiModel[]>('/models'),
   approvers: () => get<Approver[]>('/approvers'),
   addApprover: (body: { name: string; email: string }) => post<Approver>('/approvers', body),

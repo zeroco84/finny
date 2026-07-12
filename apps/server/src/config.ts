@@ -75,6 +75,18 @@ export const config = {
   // Incoming Webhook. Set here as a default, or per-deployment in Settings
   // (the stored value wins). Empty = alerts are stored and shown in the UI only.
   alertWebhookUrl: env('ALERT_WEBHOOK_URL'),
+  // SSRF guard: the operator-settable webhook may only target these
+  // Microsoft-owned host suffixes (Teams connectors / Power Automate / Power
+  // Platform / Logic Apps). Override if your tenant uses a different endpoint.
+  alertWebhookAllowedHosts: (
+    env(
+      'ALERT_WEBHOOK_ALLOWED_HOSTS',
+      '.webhook.office.com,.logic.azure.com,.powerplatform.com,.azure-apihub.net',
+    )
+  )
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 
   // Bearer token for the BlockDocs cost-dashboard pull endpoint; empty = disabled.
   blockdocsToken: env('FINNY_BLOCKDOCS_TOKEN'),
