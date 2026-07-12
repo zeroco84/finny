@@ -46,6 +46,9 @@ export const config = {
 
   mailProvider: env('MAIL_PROVIDER', 'mock') as 'mock' | 'graph',
   mailPollSeconds: Number(env('MAIL_POLL_SECONDS', '60')),
+  // Largest attachment Finny will store and parse. Bounds disk use and the PDF
+  // parser against a huge or decompression-bomb file from the untrusted mailbox.
+  attachmentMaxBytes: Number(env('ATTACHMENT_MAX_MB', '25')) * 1024 * 1024,
   graph: {
     tenantId: env('GRAPH_TENANT_ID'),
     clientId: env('GRAPH_CLIENT_ID'),

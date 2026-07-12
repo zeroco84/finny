@@ -84,7 +84,10 @@ export const mockExtractor: Extractor = {
     const exact = new Uint8Array(buffer);
     let text: string;
     try {
-      const parsed = await pdfParse(exact as unknown as Buffer);
+      // Bound the parse: cap pages (a huge page count can't drive an unbounded
+      // loop) and select the newer bundled pdf.js build (past CVE-2018-5158)
+      // rather than pdf-parse's 2018-era default.
+      const parsed = await pdfParse(exact as unknown as Buffer, { max: 50, version: 'v2.0.550' });
       text = parsed.text ?? '';
     } catch (err) {
       throw new UnreadableDocumentError(
