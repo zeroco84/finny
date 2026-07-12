@@ -13,6 +13,7 @@ import {
 beforeAll(() => {
   config.sessionSecret = 'test-secret';
   config.appUrl = 'https://finny.example.com';
+  config.cookieSecure = true; // production posture: cookies marked Secure
   config.leadEmails = ['amy@example.com'];
 });
 
