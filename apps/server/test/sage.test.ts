@@ -17,6 +17,7 @@ const line = {
   vat_rate: 23,
   po_number: 'PO 8749',
   project_code: 'CLON3',
+  disputed: false,
 };
 
 function row(csv: string, n = 1): string[] {
@@ -52,6 +53,16 @@ describe('buildSageCsv (posting-sheet format)', () => {
     );
     expect(buildDetails({ ...line, invoice_ref: 'Inv110165', po_number: null, project_code: null })).toBe(
       'Inv110165 - Hegarty Steel Ltd',
+    );
+  });
+
+  it('prefixes DISPUTED (leading, so it survives truncation) for manager-rejected invoices', () => {
+    expect(buildDetails({ ...line, disputed: true })).toBe(
+      'DISPUTED Inv4590 - Hegarty Steel Ltd (CLON3/PO 8749)',
+    );
+    // The prefix rides through to the posting CSV Details column too.
+    expect(row(buildSageCsv([{ ...line, disputed: true }], DEFAULT_SETTINGS))[6]).toBe(
+      'DISPUTED Inv4590 - Hegarty Steel Ltd (CLON3/PO 8749)',
     );
   });
 

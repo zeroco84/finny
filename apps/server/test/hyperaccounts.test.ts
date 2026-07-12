@@ -24,6 +24,7 @@ const line: SageLineInput = {
   vat_rate: 23,
   po_number: 'PO 8749',
   project_code: 'CLON3',
+  disputed: false,
 };
 
 describe('buildPurchaseInvoicePayload', () => {

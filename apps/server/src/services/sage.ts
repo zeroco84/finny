@@ -48,6 +48,9 @@ export interface SageLineInput {
   vat_rate: number | null;
   po_number: string | null;
   project_code: string | null; // resolves to the project's Dept number
+  // Manager rejected this invoice: it still posts (so the ledger is complete)
+  // but is flagged DISPUTED in Details for the AP lead to hold before payment.
+  disputed: boolean;
 }
 
 function csvField(value: string): string {
@@ -60,13 +63,16 @@ export function taxCodeForRate(rate: number | null, settings: Settings): string 
   return settings.tax_codes[String(rate)] ?? settings.default_tax_code;
 }
 
-/** "Inv4590 - Bulky Waste (OTN/PO 8749)" — the sheet's Details convention. */
+/** "Inv4590 - Bulky Waste (OTN/PO 8749)" — the sheet's Details convention.
+ * A manager-rejected invoice is prefixed "DISPUTED " so it is unmistakable in
+ * Sage; the prefix leads so it survives the 60-char Details truncation. */
 export function buildDetails(line: SageLineInput): string {
   const bare = line.invoice_ref.replace(/^inv[\s-]*/i, '');
   const ref = /^\d+$/.test(bare) ? `Inv${bare}` : line.invoice_ref;
   const parenParts = [line.project_code, line.po_number].filter(Boolean);
   const paren = parenParts.length > 0 ? ` (${parenParts.join('/')})` : '';
-  return `${ref} - ${line.vendor_name}${paren}`;
+  const prefix = line.disputed ? 'DISPUTED ' : '';
+  return `${prefix}${ref} - ${line.vendor_name}${paren}`;
 }
 
 export function buildSageCsv(lines: SageLineInput[], settings: Settings): string {
@@ -113,6 +119,7 @@ export function lineFromRow(r: Record<string, unknown>, postingRef: string): Sag
     invoice_ref: String(r.invoice_ref ?? ''),
     posting_ref: postingRef,
     vendor_name: String(r.vendor_name ?? ''),
+    disputed: String(r.status ?? '') === 'rejected',
     net_cents: r.net_cents === null ? null : Number(r.net_cents),
     vat_cents: r.vat_cents === null ? null : Number(r.vat_cents),
     gross_cents: Number(r.gross_cents ?? 0),
