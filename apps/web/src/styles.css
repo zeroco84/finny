@@ -175,6 +175,11 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .ai-ghost { font-size: 0.78rem; color: var(--accent); }
 .radio-row { display: flex; gap: 8px; align-items: center; font-size: 0.88rem; margin-top: 4px; }
 .radio-row select { width: auto; }
+/* Checkboxes/radios must keep their intrinsic size — the global input rule sets
+   width:100%, which in a flex row would stretch the box and shove the label off
+   to the side. Scoped here so tick-box rows lay out inline. */
+.radio-row input[type='checkbox'], .radio-row input[type='radio'] { width: auto; flex: none; margin: 0; }
+.radio-row > span { flex: 1; }
 
 /* ── Cards, tables, banners ───────────────────────────────────────────── */
 .card {
