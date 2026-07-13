@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   categories: [
     { name: 'Site Costs', nominal_code: '5000' },
     { name: 'Materials', nominal_code: '5200' },
+    { name: 'Subcontractors', nominal_code: '5300' },
     { name: 'Plant & Equipment Hire', nominal_code: '5100' },
     { name: 'Professional Fees', nominal_code: '7600' },
     { name: 'Utilities', nominal_code: '7200' },

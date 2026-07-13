@@ -91,7 +91,11 @@ export const VENDOR_TEMPLATES: VendorTemplate[] = [
   },
 ];
 
-export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt' | 'statement';
+export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt' | 'statement' | 'payment_recommendation';
+
+// Subcontractors on the internal cost-estimating team's monthly payment
+// certificates (not suppliers — they never invoice the AP mailbox directly).
+const SUBCONTRACTORS = ['Bracken Groundworks Ltd', 'Loughside Mechanical Ltd', 'Glenbeg Facades Ltd'];
 
 // Kept aligned with the seeded settings (entities / projects) so the mock
 // extractor's list-matching has realistic work to do. Projects are drawn per
@@ -183,6 +187,74 @@ export async function generateSampleInvoice(opts: {
       vendor,
       ref,
       subject: `Statement of account — ${vendor.name}`,
+    };
+  }
+
+  if (scenario === 'payment_recommendation') {
+    // Internal cost-estimating monthly payment certificate for a subcontractor
+    // claim — payable, so Finny must queue it for review, not flag it "other".
+    const subbie = SUBCONTRACTORS[Math.floor(rng() * SUBCONTRACTORS.length)];
+    const withProjects = BILLED_ENTITIES.filter((e) => ENTITY_PROJECTS[e].length > 0);
+    const entity = withProjects[Math.floor(rng() * withProjects.length)];
+    const projects = ENTITY_PROJECTS[entity];
+    const [projectName] = projects[Math.floor(rng() * projects.length)];
+    const claimNo = 2 + Math.floor(rng() * 8);
+    const po = String(900 + Math.floor(rng() * 100));
+    const contractSum = Math.round((500_000 + rng() * 1_500_000) * 100) / 100;
+    const valueToDate = Math.round(contractSum * (0.2 + rng() * 0.6) * 100) / 100;
+    const retention = Math.round(valueToDate * 5) / 100;
+    const recommendedToDate = Math.round((valueToDate - retention) * 100) / 100;
+    const previously = Math.round(recommendedToDate * (0.5 + rng() * 0.4) * 100) / 100;
+    const nowRecommended = Math.round((recommendedToDate - previously) * 100) / 100;
+    const dateText = date.toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const claimMonth = date.toLocaleDateString('en-IE', { month: 'long' });
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    const finished = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+    doc.fontSize(14).text('SUBCONTRACTOR MONTHLY PAYMENT RECOMMENDATION');
+    doc.moveDown(0.8);
+    doc.fontSize(10).fillColor('#333');
+    doc.text(`Contract :  ${projectName}`);
+    doc.text(`PO Number :  ${po}`);
+    doc.text(`Contractor :  ${subbie}`);
+    doc.text(`Claim No :  ${claimNo}`);
+    doc.text(`Claim Mth :  ${claimMonth}`);
+    doc.text(`Contract Sum :  ${money(contractSum)}`);
+    doc.moveDown(1);
+    doc.text(`Value of Works to Date   €${money(valueToDate)}`);
+    doc.text(`Less retention @ 5%   -€${money(retention)}`);
+    doc.text(`Recommended to date   €${money(recommendedToDate)}`);
+    doc.text(`Less previously recommended   €${money(previously)}`);
+    doc.moveDown(0.5);
+    doc.fontSize(11).fillColor('#000').text(`Now recommended   €${money(nowRecommended)}`);
+    doc.text(`Amount Recommended for Certificate No. ${claimNo}   €${money(nowRecommended)}`);
+    doc.fontSize(9).fillColor('#555').text('VAT to be accounted for by the Principal Contractor');
+    doc.moveDown(1.5);
+    doc.fontSize(10).fillColor('#000').text(`Signed:  ____________________  for ${entity}`);
+    doc.text(`Date:  ${dateText}`);
+    doc.moveDown(1);
+    doc.fontSize(8).fillColor('#777')
+      .text('Amount recommended is subject to approval of workmanship and materials by the Architect/Assigned Certifier.');
+    doc.end();
+    const buffer = await finished;
+    const ref = String(claimNo);
+    return {
+      buffer,
+      filename: `payment-recommendation-claim-${claimNo}.pdf`,
+      vendor: {
+        name: subbie,
+        address: '',
+        vatNumber: '',
+        email: 'estimating@example.com',
+        refPrefix: 'CERT',
+        poChance: 1,
+        style: 'classic',
+        items: [],
+      },
+      ref,
+      subject: `Monthly payment recommendation — ${subbie} (Claim ${claimNo})`,
     };
   }
 

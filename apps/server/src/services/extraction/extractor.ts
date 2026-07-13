@@ -11,7 +11,7 @@ export interface ExtractedField {
 }
 
 export interface ExtractionResult {
-  doc_type: 'invoice' | 'statement' | 'remittance' | 'other';
+  doc_type: 'invoice' | 'payment_recommendation' | 'statement' | 'remittance' | 'other';
   vendor_name: ExtractedField;
   invoice_ref: ExtractedField;
   invoice_date: ExtractedField;

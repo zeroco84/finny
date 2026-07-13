@@ -8,6 +8,7 @@ import { findDuplicate, getInvoiceRow } from '../invoices.js';
 import { getSettings } from '../settings.js';
 import { resolveRouting } from '../routing.js';
 import { buildRulesContext, getExtractor, UnreadableDocumentError } from './extractor.js';
+import { sniffPaymentRecommendation } from './docSteering.js';
 
 /**
  * Run extraction + classification for one invoice in status 'received'.
@@ -32,6 +33,15 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     const buffer = fs.readFileSync(String(row.attachment_path));
     const mime = String(row.attachment_mime);
     const result = await extractor.extract(buffer, mime, buildRulesContext());
+
+    // Deterministic steering: an internal cost-estimating document titled
+    // "monthly payment recommendation" is payable whatever the model called
+    // it. Checked before the auto-file branch below so a misclassified one can
+    // never be silently filed as a statement — money would go unpaid.
+    let docType = result.doc_type;
+    if (docType !== 'payment_recommendation' && (await sniffPaymentRecommendation(buffer, mime))) {
+      docType = 'payment_recommendation';
+    }
 
     const vendorName = result.vendor_name.value;
     const vendorNormalized = vendorName ? normalizeVendor(vendorName) : null;
@@ -125,7 +135,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
          proposed_category = ?, proposed_approver_id = ?, routing_confidence = ?,
          routing_rationale = ?, matched_rule_id = ?, duplicate_of = ?, updated_at = ?
        WHERE id = ?`,
-      result.doc_type,
+      docType,
       vendorName,
       vendorNormalized,
       result.invoice_ref.value,
@@ -155,7 +165,8 @@ export async function processInvoice(invoiceId: string): Promise<void> {
 
     audit(invoiceId, 'extraction_completed', 'system', {
       provider: extractor.name,
-      doc_type: result.doc_type,
+      doc_type: docType,
+      ...(docType !== result.doc_type ? { doc_type_from_model: result.doc_type, doc_type_steered_by: 'title_rule' } : {}),
       vendor: vendorName,
       invoice_ref: result.invoice_ref.value,
       confidence,
@@ -170,16 +181,17 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     // mailbox. They are not bills: file them automatically (visible under
     // Completed, full audit trail, reopenable) instead of queueing them for
     // review. "other" is NOT auto-filed — an unrecognisable document might be
-    // a mangled invoice, so a human looks at it.
-    if (result.doc_type === 'statement' || result.doc_type === 'remittance') {
+    // a mangled invoice, so a human looks at it. Payment recommendations are
+    // payable and queue for review like invoices.
+    if (docType === 'statement' || docType === 'remittance') {
       run(
         `UPDATE invoices SET status = 'discarded', discarded_reason = ?, updated_at = ? WHERE id = ?`,
-        `Auto-filed: supplier ${result.doc_type} (not a bill)`,
+        `Auto-filed: supplier ${docType} (not a bill)`,
         nowIso(),
         invoiceId,
       );
       audit(invoiceId, 'auto_filed', 'finny', {
-        doc_type: result.doc_type,
+        doc_type: docType,
         vendor: vendorName,
         note: 'Filed without review — reopen from the invoice page if this is actually an invoice.',
       });

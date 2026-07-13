@@ -10,25 +10,7 @@ import {
   type RulesContext,
 } from './extractor.js';
 import { parseMoneyToCents } from '../../domain/util.js';
-
-/**
- * Classify supplier statements / remittance advices, anchored to the top of the
- * document (title/header area). Anchoring matters: a genuine invoice often
- * mentions "remittance advice" in a footer or payment-terms line, and matching
- * the whole body would misfile it as a statement — silently removing a real
- * bill from the review queue. Returns null for anything that should be reviewed.
- */
-export function classifyStatementLike(text: string): 'statement' | 'remittance' | null {
-  const head = text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 12)
-    .join('\n');
-  if (/remittance\s+advice/i.test(head)) return 'remittance';
-  if (/statement\s+of\s+(?:your\s+)?account/i.test(head)) return 'statement';
-  return null;
-}
+import { classifyStatementLike, isPaymentRecommendation } from './docSteering.js';
 
 /**
  * Offline extractor: parses the PDF text layer with deterministic patterns.
@@ -56,6 +38,94 @@ function match(text: string, patterns: RegExp[]): string | null {
     if (m) return m[1];
   }
   return null;
+}
+
+/** Any configured project referenced by name or code, anywhere on the document. */
+function findProjectCode(text: string, context: RulesContext): string | null {
+  const textLower = text.toLowerCase();
+  for (const p of context.projects) {
+    if (textLower.includes(p.name.toLowerCase()) || new RegExp(`\\b${p.code}\\b`).test(text)) {
+      return p.code;
+    }
+  }
+  return null;
+}
+
+/**
+ * Internal cost-estimating payment recommendations are payment certificates,
+ * not invoices — the generic invoice patterns don't fit their layout, so they
+ * get their own targeted extraction.
+ */
+function extractPaymentRecommendation(text: string, context: RulesContext): ExtractionResult {
+  // "Contractor : <name>" is who gets paid. Line-anchored so "Main/Principal
+  // Contractor" (the paying side) never matches, separator required and the
+  // value re-checked so the "SUBCONTRACTOR MONTHLY PAYMENT RECOMMENDATION"
+  // title itself can never be read as the vendor.
+  let vendor: string | null = null;
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s*(?:sub-?)?contractor\s*[:.\-]\s*(.+)/i);
+    if (m && !/payment\s+recommendation/i.test(m[1])) {
+      vendor = m[1].trim();
+      break;
+    }
+  }
+  // The claim/certificate number is the only per-document reference printed —
+  // it becomes the invoice ref (unique per subcontractor, drives dedupe).
+  const ref = match(text, [
+    /(?:^|\n)\s*claim\s*no\.?\s*[:.\-]?\s*(\d+)/i,
+    /certificate\s*no\.?\s*[:.\-]?\s*(\d+)/i,
+  ]);
+  const date = match(text, [
+    /date\s*[:.\-]*\s*(\d{1,2}[\/\-.][A-Za-z]{3,9}[\/\-.]\d{2,4})/i,
+    /date\s*[:.\-]*\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
+    /date\s*[:.\-]*\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
+  ]);
+  // The payable amount is this month's certificate, never the cumulative
+  // "recommended to date" or contract totals.
+  const net = match(text, [
+    /now\s+recommended\s*[:.\-]?\s*€?\s*([\d,]+\.\d{2})/i,
+    /amount\s+recommended[^€\n]*?€?\s*([\d,]+\.\d{2})/i,
+  ]);
+  const po = match(text, [
+    /(?:^|\n)\s*po\b\.?\s*(?:number|no\.?|#)\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-\/]*)/i,
+    /(?:^|\n)\s*po\s*[:.\-]\s*([A-Z0-9][A-Z0-9\-\/]*)/i,
+  ]);
+  // RCT reverse charge: the principal contractor accounts for the VAT, so the
+  // certificate carries none and the recommended amount is both net and gross.
+  const reverseCharge = /vat\s+to\s+be\s+accounted\s+for\s+by\s+the\s+principal\s+contractor/i.test(text);
+  // No Bill To block — the certificate is signed "for <entity>", so match any
+  // configured legal entity named anywhere on the document.
+  const textLower = text.toLowerCase();
+  const entity = context.entities.find((e) => textLower.includes(e.toLowerCase())) ?? null;
+  const category = context.categories.some((c) => c.name === 'Subcontractors') ? 'Subcontractors' : null;
+
+  return {
+    doc_type: 'payment_recommendation',
+    vendor_name: field(vendor, 'vendor'),
+    invoice_ref: field(ref, 'ref'),
+    invoice_date: field(date, 'date'),
+    net: field(net, 'net'),
+    vat: reverseCharge && net ? field('0.00', 'vat') : emptyField(),
+    gross: reverseCharge && net ? field(net, 'gross') : emptyField(),
+    vat_rate: reverseCharge && net ? field('0', 'vat_rate') : emptyField(),
+    vat_number: emptyField(),
+    po_number: field(po, 'po'),
+    billed_to_entity: field(entity, 'entity'),
+    project: field(findProjectCode(text, context), 'project'),
+    line_items: [],
+    proposed_category: {
+      name: category,
+      confidence: category ? 0.8 : 0,
+      rationale: category
+        ? 'Subcontractor payment recommendation (mock heuristic).'
+        : 'Payment recommendation — no "Subcontractors" category configured, pick one manually.',
+    },
+    proposed_approver: {
+      email_or_name: null,
+      confidence: 0,
+      rationale: 'Mock extractor does not propose approvers — learned rules or the reviewer decide.',
+    },
+  };
 }
 
 const CATEGORY_KEYWORDS: [RegExp, string][] = [
@@ -143,6 +213,12 @@ export const mockExtractor: Extractor = {
       };
     }
 
+    // Internal payment recommendations: payable like an invoice, but the
+    // certificate layout needs its own extraction patterns.
+    if (isPaymentRecommendation(text)) {
+      return extractPaymentRecommendation(text, context);
+    }
+
     const ref = match(text, [
       /invoice\s*(?:no|number|#)\.?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
       /our\s*ref\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
@@ -172,15 +248,7 @@ export const mockExtractor: Extractor = {
       entity = context.entities.find((e) => lower.includes(e.toLowerCase())) ?? null;
     }
 
-    // Project: any configured project referenced by name or code.
-    let project: string | null = null;
-    const textLower = text.toLowerCase();
-    for (const p of context.projects) {
-      if (textLower.includes(p.name.toLowerCase()) || new RegExp(`\\b${p.code}\\b`).test(text)) {
-        project = p.code;
-        break;
-      }
-    }
+    const project = findProjectCode(text, context);
 
     const lineItems: LineItem[] = [];
     for (const line of lines) {

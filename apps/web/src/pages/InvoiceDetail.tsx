@@ -247,6 +247,12 @@ export default function InvoiceDetailPage() {
             Reopen for review
           </button>
         </Banner>
+      ) : detail.doc_type === 'payment_recommendation' ? (
+        <Banner kind="info">
+          This is an internal <strong>payment recommendation</strong> (cost estimating → AP), not a supplier
+          invoice. Process it like an invoice — the recommended amount is the payable amount, and VAT is
+          normally accounted for by the principal contractor (reverse charge).
+        </Banner>
       ) : detail.doc_type && detail.doc_type !== 'invoice' ? (
         <Banner kind="warn">
           The AI classified this document as a <strong>{detail.doc_type}</strong>, not an invoice. If that is

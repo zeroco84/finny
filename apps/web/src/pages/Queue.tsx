@@ -21,6 +21,7 @@ const SCENARIOS: { key: string; label: string }[] = [
   { key: 'image', label: 'Photographed invoice (image)' },
   { key: 'corrupt', label: 'Corrupt attachment (alert demo)' },
   { key: 'statement', label: 'Supplier statement (auto-filed)' },
+  { key: 'payment_recommendation', label: 'Payment recommendation (internal)' },
   { key: 'batch', label: 'Batch of 5 invoices' },
 ];
 
@@ -55,7 +56,9 @@ export default function Queue() {
         ? 'Corrupt attachment sent — watch the Failed tab and Alerts.'
         : scenario === 'statement'
           ? 'Supplier statement sent — Finny files it under Completed automatically (no review needed).'
-          : `Simulated ${count} incoming invoice${count > 1 ? 's' : ''} — extraction runs in a few seconds.`,
+          : scenario === 'payment_recommendation'
+            ? 'Payment recommendation sent — Finny classifies it and queues it for review like an invoice.'
+            : `Simulated ${count} incoming invoice${count > 1 ? 's' : ''} — extraction runs in a few seconds.`,
     );
     setTimeout(() => setNotice(null), 6000);
     await load();
@@ -169,8 +172,15 @@ export default function Queue() {
                     <strong>{inv.vendor_name ?? <span className="muted">unknown</span>}</strong>
                     {inv.duplicate_of && <span className="flag flag-dup" title="Possible duplicate">DUP</span>}
                     {inv.doc_type && inv.doc_type !== 'invoice' && (
-                      <span className="flag flag-doc" title={`AI thinks this is a ${inv.doc_type}`}>
-                        {inv.doc_type}
+                      <span
+                        className="flag flag-doc"
+                        title={
+                          inv.doc_type === 'payment_recommendation'
+                            ? 'Internal payment recommendation — review like an invoice'
+                            : `AI thinks this is a ${inv.doc_type}`
+                        }
+                      >
+                        {inv.doc_type === 'payment_recommendation' ? 'payment rec' : inv.doc_type}
                       </span>
                     )}
                     {inv.entity && (
