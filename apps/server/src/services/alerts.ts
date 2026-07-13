@@ -4,6 +4,10 @@ import { config } from '../config.js';
 import { newId, nowIso } from '../domain/util.js';
 import { getAlertWebhookUrl } from './settings.js';
 import { audit } from './audit.js';
+import { buildTeamsMessage, cardSafe, postCardToWebhook, urlHost } from './teamsWebhook.js';
+
+// Re-exported so existing importers (routes, tests) keep their path.
+export { isValidWebhookUrl } from './teamsWebhook.js';
 
 interface AlertContext {
   invoiceId?: string | null;
@@ -121,47 +125,10 @@ export function alertsChannelName(): 'webhook' | 'off' {
   return webhookUrl() ? 'webhook' : 'off';
 }
 
-/** Host of the webhook for display/audit — never store the secret token path. */
-function urlHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return 'webhook';
-  }
-}
-
-/**
- * SSRF guard: the webhook destination is operator-settable, so restrict it to
- * https on a Microsoft-owned host suffix (Teams connector / Power Automate /
- * Power Platform / Logic Apps). This blocks localhost, cloud metadata and
- * internal hosts regardless of DNS, and no credentials may be embedded.
- */
-export function isValidWebhookUrl(raw: string): boolean {
-  let u: URL;
-  try {
-    u = new URL(raw.trim());
-  } catch {
-    return false;
-  }
-  if (u.protocol !== 'https:') return false;
-  if (u.username || u.password) return false;
-  const host = u.hostname.toLowerCase();
-  return config.alertWebhookAllowedHosts.some((suffix) => host === suffix.replace(/^\./, '') || host.endsWith(suffix));
-}
-
 /** Whether a webhook is configured and its host (never the token) — for the UI. */
 export function webhookInfo(): { configured: boolean; host: string | null } {
   const url = webhookUrl();
   return { configured: Boolean(url), host: url ? urlHost(url) : null };
-}
-
-/**
- * Neutralise Adaptive-Card / Markdown control characters so untrusted invoice
- * text (vendor, ref, filename, extractor error) cannot inject a clickable
- * phishing link or formatting into an alert card that appears to come from Finny.
- */
-function cardSafe(value: string): string {
-  return value.replace(/[[\]()`<>]/g, ' ').replace(/[ \t]+/g, ' ').trim();
 }
 
 function sanitizeCtx(ctx: AlertContext): AlertContext {
@@ -176,11 +143,7 @@ function sanitizeCtx(ctx: AlertContext): AlertContext {
   };
 }
 
-/**
- * Build the Microsoft Teams payload: an Adaptive Card wrapped for an Incoming
- * Webhook — the Teams "Workflows → Post to a channel when a webhook request is
- * received" flow, which is what a user subscribes a channel to.
- */
+/** Adapt an alert into the shared Teams Adaptive-Card envelope. */
 function teamsPayload(opts: {
   subject: string;
   body: string;
@@ -188,65 +151,23 @@ function teamsPayload(opts: {
   nextStep: string;
   invoiceUrl: string | null;
 }): unknown {
-  const card = {
-    type: 'AdaptiveCard',
-    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-    version: '1.4',
-    msteams: { width: 'Full' },
-    body: [
-      {
-        type: 'TextBlock',
-        size: 'Large',
-        weight: 'Bolder',
-        wrap: true,
-        color: opts.severity === 'critical' ? 'Attention' : 'Warning',
-        text: `${opts.severity === 'critical' ? '🔴' : '🟠'} ${opts.subject}`,
-      },
-      { type: 'TextBlock', wrap: true, text: opts.body },
-      {
-        type: 'FactSet',
-        facts: [
-          { title: 'Severity', value: opts.severity },
-          { title: 'Next step', value: opts.nextStep },
-        ],
-      },
+  return buildTeamsMessage({
+    title: `${opts.severity === 'critical' ? '🔴' : '🟠'} ${opts.subject}`,
+    titleColor: opts.severity === 'critical' ? 'Attention' : 'Warning',
+    body: opts.body,
+    facts: [
+      { title: 'Severity', value: opts.severity },
+      { title: 'Next step', value: opts.nextStep },
     ],
-    actions: opts.invoiceUrl
-      ? [{ type: 'Action.OpenUrl', title: 'Open in Finny', url: opts.invoiceUrl }]
-      : [],
-  };
-  return {
-    type: 'message',
-    attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content: card }],
-  };
-}
-
-async function postToTeams(url: string, payload: unknown): Promise<void> {
-  if (!isValidWebhookUrl(url)) {
-    throw new Error('Refusing to post: the alert webhook URL is not an allowed Microsoft Teams endpoint');
-  }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    // Don't follow a redirect off the validated host, and don't hang forever.
-    redirect: 'manual',
-    signal: AbortSignal.timeout(10_000),
+    actionUrl: opts.invoiceUrl,
   });
-  if (!res.ok) {
-    // Never surface the upstream body — echoed into delivery_error it would be
-    // an internal-response read oracle. Log it server-side only, return status.
-    const body = await res.text().catch(() => '');
-    if (body) console.error(`[alerts] webhook ${urlHost(url)} error body:`, body.slice(0, 300));
-    throw new Error(`Teams webhook returned HTTP ${res.status}`);
-  }
 }
 
 /** Post a one-off connectivity card to the configured webhook (the test button). */
 export async function sendTestAlert(): Promise<void> {
   const url = webhookUrl();
   if (!url) throw new Error('No alert webhook is configured');
-  await postToTeams(
+  await postCardToWebhook(
     url,
     teamsPayload({
       subject: '[Finny] Test alert',
@@ -306,7 +227,7 @@ export async function raiseAlert(type: AlertType, ctx: AlertContext = {}): Promi
 
   if (url) {
     try {
-      await postToTeams(
+      await postCardToWebhook(
         url,
         teamsPayload({
           subject,

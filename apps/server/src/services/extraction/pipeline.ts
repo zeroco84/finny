@@ -4,6 +4,7 @@ import { one, run } from '../../db/db.js';
 import { normalizeVendor, nowIso, parseInvoiceDate, parseMoneyToCents, suggestAccountRef } from '../../domain/util.js';
 import { audit } from '../audit.js';
 import { raiseAlert } from '../alerts.js';
+import { evaluateSubscriptionsForInvoice } from '../notifications.js';
 import { findDuplicate, getInvoiceRow } from '../invoices.js';
 import { getSettings } from '../settings.js';
 import { resolveRouting } from '../routing.js';
@@ -60,6 +61,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     }
 
     const invoiceDate = parseInvoiceDate(result.invoice_date.value);
+    const dueDate = parseInvoiceDate(result.due_date.value);
     const vatRate = result.vat_rate.value !== null ? Number(result.vat_rate.value) : null;
 
     // Entity/project only count as extracted when they match the configured
@@ -76,6 +78,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       vendor_name: result.vendor_name.confidence,
       invoice_ref: result.invoice_ref.confidence,
       invoice_date: invoiceDate ? result.invoice_date.confidence : 0,
+      due_date: dueDate ? result.due_date.confidence : 0,
       net: netCents !== null ? result.net.confidence : 0,
       vat: vatCents !== null ? result.vat.confidence : 0,
       gross: grossCents !== null ? grossConfidence : 0,
@@ -96,6 +99,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       vendor_name: vendorName,
       invoice_ref: result.invoice_ref.value,
       invoice_date: invoiceDate,
+      due_date: dueDate,
       net_cents: netCents,
       vat_cents: vatCents,
       gross_cents: grossCents,
@@ -127,7 +131,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
     run(
       `UPDATE invoices SET
          status = 'needs_review', doc_type = ?, vendor_name = ?, vendor_normalized = ?,
-         invoice_ref = ?, invoice_date = ?, net_cents = ?, vat_cents = ?, gross_cents = ?,
+         invoice_ref = ?, invoice_date = ?, due_date = ?, net_cents = ?, vat_cents = ?, gross_cents = ?,
          vat_rate = ?, vat_number = ?, po_number = ?, supplier_account_ref = ?,
          entity = ?, project_code = ?,
          line_items = ?, field_confidence = ?, extraction_snapshot = ?, extraction_provider = ?,
@@ -140,6 +144,7 @@ export async function processInvoice(invoiceId: string): Promise<void> {
       vendorNormalized,
       result.invoice_ref.value,
       invoiceDate,
+      dueDate,
       netCents,
       vatCents,
       grossCents,
@@ -195,6 +200,15 @@ export async function processInvoice(invoiceId: string): Promise<void> {
         vendor: vendorName,
         note: 'Filed without review — reopen from the invoice page if this is actually an invoice.',
       });
+    }
+
+    // Fire any matching per-user event notifications, but only for real bills
+    // that landed in the review queue — the auto-filed statements/remittances
+    // above are not invoices. evaluateSubscriptionsForInvoice never throws, so
+    // a webhook problem cannot affect extraction.
+    const finalRow = getInvoiceRow(invoiceId);
+    if (finalRow?.status === 'needs_review') {
+      await evaluateSubscriptionsForInvoice(invoiceId);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

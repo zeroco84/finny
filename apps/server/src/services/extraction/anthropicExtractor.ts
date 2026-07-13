@@ -84,6 +84,7 @@ const EXTRACTION_TOOL = {
       vendor_name: fieldSchema,
       invoice_ref: fieldSchema,
       invoice_date: { ...fieldSchema, description: 'Invoice date formatted as yyyy-mm-dd' },
+      due_date: { ...fieldSchema, description: 'Payment due date formatted as yyyy-mm-dd. If only payment terms are stated (e.g. "Net 30"), compute it from the invoice date; null if neither is present.' },
       net: { ...fieldSchema, description: 'Net (ex-VAT) amount as a plain decimal string, e.g. "1234.56"' },
       vat: { ...fieldSchema, description: 'VAT amount as a plain decimal string' },
       gross: { ...fieldSchema, description: 'Gross (inc-VAT) total as a plain decimal string' },
@@ -135,7 +136,7 @@ const EXTRACTION_TOOL = {
       },
     },
     required: [
-      'doc_type', 'vendor_name', 'invoice_ref', 'invoice_date', 'net', 'vat', 'gross',
+      'doc_type', 'vendor_name', 'invoice_ref', 'invoice_date', 'due_date', 'net', 'vat', 'gross',
       'vat_rate', 'vat_number', 'po_number', 'billed_to_entity', 'project',
       'line_items', 'proposed_category', 'proposed_approver',
     ],
@@ -146,7 +147,7 @@ const EXTRACTION_TOOL = {
 const zField = z.object({ value: z.string().nullable(), confidence: z.number() });
 const zResult = z.object({
   doc_type: z.enum(['invoice', 'payment_recommendation', 'statement', 'remittance', 'other']),
-  vendor_name: zField, invoice_ref: zField, invoice_date: zField,
+  vendor_name: zField, invoice_ref: zField, invoice_date: zField, due_date: zField,
   net: zField, vat: zField, gross: zField,
   vat_rate: zField, vat_number: zField, po_number: zField,
   billed_to_entity: zField, project: zField,
@@ -241,6 +242,7 @@ export const anthropicExtractor: Extractor = {
       vendor_name: clamp(parsed.vendor_name),
       invoice_ref: clamp(parsed.invoice_ref),
       invoice_date: clamp(parsed.invoice_date),
+      due_date: clamp(parsed.due_date),
       net: clamp(parsed.net),
       vat: clamp(parsed.vat),
       gross: clamp(parsed.gross),

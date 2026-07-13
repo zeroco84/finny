@@ -80,6 +80,52 @@ export function toSageDate(isoDate: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 }
 
+/** Normalise for loose matching: uppercase, non-alphanumerics → single spaces. */
+function normalizeLoose(s: string): string {
+  return s.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Levenshtein edit distance (iterative, two-row) — for short-token typo tolerance. */
+export function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+/** Two tokens are "close" when their edit-distance similarity ≥ 0.82 (len ≥ 4). */
+function tokensClose(a: string, b: string): boolean {
+  if (a.length < 4 || b.length < 4) return false;
+  return 1 - levenshtein(a, b) / Math.max(a.length, b.length) >= 0.82;
+}
+
+/**
+ * Deterministic, typo-tolerant fuzzy match for supplier/project alerts.
+ * Normalises both sides, then matches on whole-string containment, full
+ * query-token subset (each query token found in the candidate as a substring or
+ * a close typo of one of its tokens). Empty candidate or query never matches.
+ */
+export function looseMatch(candidate: string | null | undefined, query: string | null | undefined): boolean {
+  const c = normalizeLoose(candidate ?? '');
+  const q = normalizeLoose(query ?? '');
+  if (!c || !q) return false;
+  if (c.includes(q) || q.includes(c)) return true;
+  const cTokens = c.split(' ').filter(Boolean);
+  const qTokens = q.split(' ').filter(Boolean);
+  return qTokens.every((qt) => cTokens.some((ct) => ct.includes(qt) || qt.includes(ct) || tokensClose(ct, qt)));
+}
+
 export function isoWeekLabel(dateIso: string): string {
   const d = new Date(dateIso);
   const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));

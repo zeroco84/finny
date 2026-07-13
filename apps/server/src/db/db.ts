@@ -24,6 +24,7 @@ function migrate(database: DatabaseSync): void {
   };
   ensureColumn('invoices', 'entity', 'TEXT');
   ensureColumn('invoices', 'project_code', 'TEXT');
+  ensureColumn('invoices', 'due_date', 'TEXT');
   ensureColumn('invoices', 'posting_ref', 'TEXT');
   ensureColumn('invoices', 'sage_tx_number', 'TEXT');
   ensureColumn('invoices', 'sage_posted_at', 'TEXT');
@@ -69,6 +70,28 @@ function migrate(database: DatabaseSync): void {
   }
   // Retired setting: alerts moved from an email recipient list to a webhook.
   database.exec("DELETE FROM settings WHERE key = 'alert_recipients'");
+  // Per-user event-notification subscriptions and their delivery ledger.
+  database.exec(`CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+    id TEXT PRIMARY KEY,
+    owner_email TEXT NOT NULL,
+    label TEXT NOT NULL,
+    webhook_url TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    params TEXT NOT NULL DEFAULT '{}',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_fired_at TEXT
+  )`);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_websub_owner ON webhook_subscriptions(owner_email)');
+  database.exec(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
+    subscription_id TEXT NOT NULL,
+    invoice_id TEXT NOT NULL,
+    fired_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    PRIMARY KEY (subscription_id, invoice_id)
+  )`);
 }
 
 export function getDb(): DatabaseSync {

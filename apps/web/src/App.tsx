@@ -9,6 +9,7 @@ import Queue from './pages/Queue';
 import InvoiceDetailPage from './pages/InvoiceDetail';
 import RulesPage from './pages/Rules';
 import AlertsPage from './pages/Alerts';
+import NotificationsPage from './pages/Notifications';
 import ExportsPage from './pages/Exports';
 import DashboardPage from './pages/Dashboard';
 import VolumePage from './pages/Volume';
@@ -60,6 +61,7 @@ function Shell() {
           <NavLink to="/alerts">
             Alerts <Badge n={overview?.counts.open_alerts} tone="alert" />
           </NavLink>
+          <NavLink to="/notifications">Notifications</NavLink>
           {user.role === 'lead' && <NavLink to="/audit">Audit</NavLink>}
           <NavLink to="/settings">Settings</NavLink>
           <NavLink to="/guide">Guide</NavLink>
@@ -83,6 +85,7 @@ function Shell() {
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/exports" element={<ExportsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/settings" element={<SettingsPage />} />

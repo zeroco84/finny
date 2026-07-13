@@ -13,6 +13,7 @@ const CHAPTERS: { id: string; label: string }[] = [
   { id: 'approvals', label: 'Teams approvals' },
   { id: 'sage', label: 'Posting to Sage' },
   { id: 'alerts', label: 'Alerts' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'dashboard', label: 'The dashboard' },
   { id: 'settings', label: 'Settings' },
   { id: 'faq', label: 'Troubleshooting' },
@@ -374,7 +375,28 @@ export default function GuidePage() {
             <Term label="Resolve">Dealt with. Alerts never close themselves — the list is a to-do list, not a status light.</Term>
           </Chapter>
 
-          <Chapter n={9} id="dashboard" title="The dashboard">
+          <Chapter n={9} id="notifications" title="Notifications">
+            <p>
+              Alerts are about things going <em>wrong</em>. <strong>Notifications</strong> are for things
+              you just want to <em>know about</em>. On the Notifications page you subscribe your own
+              <strong> Teams chat or channel</strong> to invoices that match criteria you pick — and only
+              you see and manage your own subscriptions.
+            </p>
+            <p>Each alert watches one category, and fires the moment a matching invoice arrives:</p>
+            <ul>
+              <li><strong>Invoice amount</strong> — gross at or over a figure you set.</li>
+              <li><strong>Invoice / due date</strong> — post-dated, back-dated beyond N days, or due within N days.</li>
+              <li><strong>Supplier name</strong> — from a supplier you name (fuzzy, so “Ltd” and small typos still match).</li>
+              <li><strong>Project name</strong> — referencing a project you name or its code.</li>
+            </ul>
+            <p>
+              Paste the URL from Teams’ <strong>Workflows → “Post to a channel when a webhook request is
+              received”</strong>. It’s stored server-side and never shown again; use <strong>Send test</strong>
+              to check the wiring, and <strong>Pause</strong> to mute an alert without deleting it.
+            </p>
+          </Chapter>
+
+          <Chapter n={10} id="dashboard" title="The dashboard">
             <Term label="Field accuracy">
               How often the AI's reading matched what a human entered, per field. The red line is the 85%
               go-live gate.
@@ -395,7 +417,7 @@ export default function GuidePage() {
             </Term>
           </Chapter>
 
-          <Chapter n={10} id="settings" title="Settings">
+          <Chapter n={11} id="settings" title="Settings">
             <p>
               Everything configurable lives here, managed by the <Lead />: shadow/live mode, the
               confidence threshold and review SLA, alert recipients, rule apply-modes, legal entities,
@@ -411,7 +433,7 @@ export default function GuidePage() {
             </Callout>
           </Chapter>
 
-          <Chapter n={11} id="faq" title="Troubleshooting">
+          <Chapter n={12} id="faq" title="Troubleshooting">
             <Faq q="An invoice I'm expecting hasn't appeared">
               Check <strong>Alerts</strong> and the <strong>Failed</strong> tab first, then Settings →
               Connectors for the mailbox's last poll. Worst case: download it from the mailbox and use

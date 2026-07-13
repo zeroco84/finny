@@ -1,6 +1,6 @@
 import express, { Router, type Request } from 'express';
 import { z } from 'zod';
-import type { ConnectorStatus, Overview, ReviewSubmission } from '@finny/shared';
+import type { ConnectorStatus, Overview, ReviewSubmission, WebhookSubscriptionInput } from '@finny/shared';
 import { config } from '../config.js';
 import { getStatus } from '../db/db.js';
 import {
@@ -40,6 +40,14 @@ import {
   setAlertStatus,
   webhookInfo,
 } from '../services/alerts.js';
+import {
+  createSubscription,
+  deleteSubscription,
+  listSubscriptions,
+  NotificationError,
+  sendSubscriptionTest,
+  updateSubscription,
+} from '../services/notifications.js';
 import {
   batchFilePath,
   exportPool,
@@ -296,6 +304,7 @@ export function buildRouter(): Router {
       vendor_name: z.string().max(200).nullable(),
       invoice_ref: z.string().max(100).nullable(),
       invoice_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
       net_cents: z.number().int().nullable(),
       vat_cents: z.number().int().nullable(),
       gross_cents: z.number().int().nullable(),
@@ -468,6 +477,71 @@ export function buildRouter(): Router {
   router.post('/alerts/:id/resolve', (req, res) => {
     const alert = setAlertStatus(paramId(req), 'resolved', req.user!.email);
     alert ? res.json(alert) : res.status(404).json({ error: 'Alert not found' });
+  });
+
+  // ── Event-notification subscriptions (self-service, scoped to the caller) ───
+  // Any signed-in user manages their own subscriptions to their own Teams chat.
+  // The webhook URL is write-only (validated here); GET never returns it. The
+  // per-type params semantics are enforced in the notifications service.
+  const subscriptionSchema = z.object({
+    label: z.string().min(1).max(80),
+    event_type: z.enum(['amount_threshold', 'date_threshold', 'supplier_match', 'project_match']),
+    params: z.record(z.string(), z.unknown()).default({}),
+    active: z.boolean().optional(),
+    webhook_url: z.string().max(2000).optional(),
+  });
+  const subscriptionPatchSchema = subscriptionSchema.partial();
+  const onNotificationError = (res: express.Response, err: unknown): void => {
+    if (err instanceof NotificationError) {
+      res.status(err.statusCode).json({ error: err.message });
+      return;
+    }
+    throw err;
+  };
+
+  router.get('/subscriptions', (req, res) => {
+    res.json(listSubscriptions(req.user!.email));
+  });
+  router.post('/subscriptions', (req, res) => {
+    const parsed = subscriptionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: `Invalid subscription: ${parsed.error.issues[0]?.message ?? ''}` });
+      return;
+    }
+    try {
+      res.status(201).json(createSubscription(req.user!.email, parsed.data as WebhookSubscriptionInput));
+    } catch (err) {
+      onNotificationError(res, err);
+    }
+  });
+  router.patch('/subscriptions/:id', (req, res) => {
+    const parsed = subscriptionPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: `Invalid subscription: ${parsed.error.issues[0]?.message ?? ''}` });
+      return;
+    }
+    try {
+      const updated = updateSubscription(req.user!.email, paramId(req), parsed.data as Partial<WebhookSubscriptionInput>);
+      updated ? res.json(updated) : res.status(404).json({ error: 'Subscription not found' });
+    } catch (err) {
+      onNotificationError(res, err);
+    }
+  });
+  router.delete('/subscriptions/:id', (req, res) => {
+    const ok = deleteSubscription(req.user!.email, paramId(req));
+    ok ? res.json({ ok: true }) : res.status(404).json({ error: 'Subscription not found' });
+  });
+  router.post('/subscriptions/:id/test', async (req, res) => {
+    try {
+      const r = await sendSubscriptionTest(req.user!.email, paramId(req));
+      res.json({ ok: true, host: r.host });
+    } catch (err) {
+      if (err instanceof NotificationError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Webhook test failed' });
+    }
   });
 
   // ── Sage exports ──────────────────────────────────────────────────────────

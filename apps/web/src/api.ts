@@ -21,6 +21,8 @@ import type {
   TeamMember,
   TeamRole,
   VolumeMetrics,
+  WebhookSubscription,
+  WebhookSubscriptionInput,
 } from '@finny/shared';
 
 export class ApiError extends Error {
@@ -95,6 +97,7 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 export const api = {
   me: () => get<SessionUser>('/me'),
@@ -140,6 +143,13 @@ export const api = {
   alerts: (status?: string) => get<Alert[]>(`/alerts${status ? `?status=${status}` : ''}`),
   ackAlert: (id: string) => post<Alert>(`/alerts/${id}/ack`),
   resolveAlert: (id: string) => post<Alert>(`/alerts/${id}/resolve`),
+
+  subscriptions: () => get<WebhookSubscription[]>('/subscriptions'),
+  createSubscription: (body: WebhookSubscriptionInput) => post<WebhookSubscription>('/subscriptions', body),
+  updateSubscription: (id: string, body: Partial<WebhookSubscriptionInput>) =>
+    patch<WebhookSubscription>(`/subscriptions/${id}`, body),
+  deleteSubscription: (id: string) => del<{ ok: boolean }>(`/subscriptions/${id}`),
+  testSubscription: (id: string) => post<{ ok: boolean; host: string | null }>(`/subscriptions/${id}/test`),
 
   exportPool: () => get<InvoiceSummary[]>('/exports/pool'),
   batches: () => get<SageBatch[]>('/exports'),

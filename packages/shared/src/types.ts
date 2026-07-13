@@ -20,6 +20,7 @@ export const CONFIDENCE_FIELDS = [
   'vendor_name',
   'invoice_ref',
   'invoice_date',
+  'due_date',
   'net',
   'vat',
   'gross',
@@ -46,6 +47,7 @@ export interface ExtractionSnapshot {
   vendor_name: string | null;
   invoice_ref: string | null;
   invoice_date: string | null; // yyyy-mm-dd
+  due_date: string | null; // yyyy-mm-dd payment due date, when stated
   net_cents: number | null;
   vat_cents: number | null;
   gross_cents: number | null;
@@ -104,6 +106,7 @@ export interface InvoiceSummary {
   vendor_name: string | null;
   invoice_ref: string | null;
   invoice_date: string | null;
+  due_date: string | null;
   gross_cents: number | null;
   currency: string;
   proposed_category: string | null;
@@ -272,6 +275,77 @@ export interface Alert {
   delivery_status: 'sent' | 'logged' | 'failed';
   delivery_error: string | null;
   delivery_at: string | null;
+}
+
+// ── Notification subscriptions (per-user event webhooks) ─────────────────────
+// Distinct from the single operational-alert webhook: any user subscribes their
+// OWN Teams chat/channel to invoices matching criteria they choose. Evaluated
+// when an invoice arrives (extraction completes and it enters the review queue).
+
+/** The four event categories a subscription can watch for. */
+export type WebhookEventType =
+  | 'amount_threshold'
+  | 'date_threshold'
+  | 'supplier_match'
+  | 'project_match';
+
+/** Fire when an invoice's gross is at or above `min_cents`. */
+export interface AmountThresholdParams {
+  min_cents: number;
+}
+
+/** Fire on out-of-range dates. Any enabled condition triggers a match. */
+export interface DateThresholdParams {
+  /** Invoice dated after it arrived (future/post-dated). */
+  postdated?: boolean;
+  /** Invoice dated more than this many days before it arrived (stale/back-dated). */
+  stale_days?: number | null;
+  /** Payment due date falls within this many days (includes already-overdue). */
+  due_within_days?: number | null;
+}
+
+/** Fire on invoices from a supplier whose name fuzzy-matches `query`. */
+export interface SupplierMatchParams {
+  query: string;
+}
+
+/** Fire on invoices referencing a project whose name or code fuzzy-matches `query`. */
+export interface ProjectMatchParams {
+  query: string;
+}
+
+export type WebhookSubscriptionParams =
+  | AmountThresholdParams
+  | DateThresholdParams
+  | SupplierMatchParams
+  | ProjectMatchParams;
+
+/**
+ * One subscription as returned to the client. The target webhook URL embeds a
+ * secret token, so it is never returned — only its host. Visible only to the
+ * user who owns it.
+ */
+export interface WebhookSubscription {
+  id: string;
+  label: string;
+  event_type: WebhookEventType;
+  params: WebhookSubscriptionParams;
+  active: boolean;
+  /** Host of the target Teams webhook (never the secret token in the path). */
+  webhook_host: string;
+  created_at: string;
+  updated_at: string;
+  last_fired_at: string | null;
+}
+
+/** Create/update payload. `webhook_url` is write-only; omit on update to keep the current one. */
+export interface WebhookSubscriptionInput {
+  label: string;
+  event_type: WebhookEventType;
+  params: WebhookSubscriptionParams;
+  active?: boolean;
+  /** Teams Incoming-Webhook URL to POST to. Required on create; optional on update. */
+  webhook_url?: string;
 }
 
 export interface SageBatch {
@@ -461,6 +535,7 @@ export interface ReviewSubmission {
     vendor_name: string | null;
     invoice_ref: string | null;
     invoice_date: string | null;
+    due_date: string | null;
     net_cents: number | null;
     vat_cents: number | null;
     gross_cents: number | null;

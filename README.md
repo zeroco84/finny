@@ -75,6 +75,7 @@ with an actionable alert) into `apps/server/data/inbox/`
 | Sage 50 batch export | `sage.ts` + Sage page | CSV matching the AP posting sheet, one file per entity |
 | Teams Approvals | `approvals/approvals.ts` | `mock` (simulator) → `APPROVALS_PROVIDER=graph` (beta endpoint) |
 | Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → Teams webhook (`ALERT_WEBHOOK_URL`) when configured |
+| Event notifications (self-service) | `notifications.ts` + Notifications page | each user subscribes their own Teams chat to invoices matching amount / date / supplier / project criteria |
 | Audit trail | `audit_events` table, timeline on every invoice | — |
 | Duplicate detection (P1) | `findDuplicate` + warning banners | same vendor + invoice ref |
 | Non-invoice handling | doc-type classification in extraction; statements/remittances auto-file to Completed (audited, reopenable) — "other" still goes to review | same in both providers |
@@ -153,6 +154,20 @@ beta contract and required permission (`ApprovalSolution.ReadWrite`) against cur
 Microsoft has moved this API before. If the tenant can't grant it, the pragmatic fallback used
 elsewhere is a Power Automate flow triggered by email/webhook; the provider seam
 (`createApprovalRequest` / `recordApprovalDecision`) is the only place that would change.
+
+### Event notifications (self-service)
+
+Separate from the single operational-alert webhook, any signed-in user can subscribe **their own**
+Teams chat or channel to invoices they care about, on the **Notifications** page. A subscription
+watches one event category — **amount** at/over a threshold, an **invoice/due date** condition
+(post-dated, back-dated beyond _N_ days, or due within _N_ days), a **supplier** name, or a
+**project** name (both fuzzy-matched) — and posts an Adaptive Card when a matching invoice arrives
+(the moment extraction finishes and it enters the review queue). Supplier/project matching is
+typo-tolerant (`looseMatch` in `domain/util.ts`); the due-date rule is backed by a real extracted
+`due_date` field. The target webhook URL is validated against the same Microsoft-host allowlist as
+the alert webhook, stored server-side, and never returned to the client (only its host is shown).
+Delivery is at-most-once per invoice per subscription (`webhook_deliveries`). Lives in
+`services/notifications.ts`; `services/teamsWebhook.ts` is the shared card/post plumbing.
 
 ### Wiring up Entra ID sign-in
 

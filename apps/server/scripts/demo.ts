@@ -77,6 +77,7 @@ async function reviewInvoice(
       vendor_name: vendor ?? 'Unknown Vendor',
       invoice_ref: row.invoice_ref === null ? `MAN-${invoiceId.slice(0, 5).toUpperCase()}` : String(row.invoice_ref),
       invoice_date: row.invoice_date === null ? new Date().toISOString().slice(0, 10) : String(row.invoice_date),
+      due_date: row.due_date === null || row.due_date === undefined ? null : String(row.due_date),
       net_cents: row.net_cents === null ? null : Number(row.net_cents),
       vat_cents: row.vat_cents === null ? null : Number(row.vat_cents),
       gross_cents: row.gross_cents === null ? 100_00 : Number(row.gross_cents),

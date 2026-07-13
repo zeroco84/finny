@@ -20,6 +20,7 @@ const EXTRACTION_FIELDS: { key: FieldKey; snapshot: keyof ExtractionSnapshot; mo
   { key: 'vendor_name', snapshot: 'vendor_name' },
   { key: 'invoice_ref', snapshot: 'invoice_ref' },
   { key: 'invoice_date', snapshot: 'invoice_date' },
+  { key: 'due_date', snapshot: 'due_date' },
   { key: 'net_cents', snapshot: 'net_cents', money: true },
   { key: 'vat_cents', snapshot: 'vat_cents', money: true },
   { key: 'gross_cents', snapshot: 'gross_cents', money: true },
@@ -204,13 +205,13 @@ export async function submitReview(
 
   run(
     `UPDATE invoices SET
-       vendor_name = ?, vendor_normalized = ?, invoice_ref = ?, invoice_date = ?,
+       vendor_name = ?, vendor_normalized = ?, invoice_ref = ?, invoice_date = ?, due_date = ?,
        net_cents = ?, vat_cents = ?, gross_cents = ?, vat_rate = ?, vat_number = ?, po_number = ?,
        supplier_account_ref = ?, category = ?, approver_id = ?, entity = ?, project_code = ?,
        duplicate_of = ?, reviewed_by = ?, reviewed_at = ?, shadow = ?,
        status = ?, confirmed_at = ?, updated_at = ?
      WHERE id = ?`,
-    f.vendor_name, vendorNormalized, f.invoice_ref, f.invoice_date,
+    f.vendor_name, vendorNormalized, f.invoice_ref, f.invoice_date, f.due_date,
     f.net_cents, f.vat_cents, f.gross_cents, f.vat_rate, f.vat_number, f.po_number,
     f.supplier_account_ref, submission.category, submission.approver_id,
     submission.entity, submission.project_code,
