@@ -9,7 +9,7 @@ import {
   type Extractor,
   type RulesContext,
 } from './extractor.js';
-import { parseMoneyToCents } from '../../domain/util.js';
+import { parseInvoiceDate, parseMoneyToCents } from '../../domain/util.js';
 import { classifyStatementLike, isPaymentRecommendation } from './docSteering.js';
 
 /**
@@ -104,6 +104,8 @@ function extractPaymentRecommendation(text: string, context: RulesContext): Extr
     vendor_name: field(vendor, 'vendor'),
     invoice_ref: field(ref, 'ref'),
     invoice_date: field(date, 'date'),
+    // Payment certificates carry no standard "due date" line — leave it for the reviewer.
+    due_date: emptyField(),
     net: field(net, 'net'),
     vat: reverseCharge && net ? field('0.00', 'vat') : emptyField(),
     gross: reverseCharge && net ? field(net, 'gross') : emptyField(),
@@ -148,6 +150,7 @@ export const mockExtractor: Extractor = {
         vendor_name: emptyField(),
         invoice_ref: emptyField(),
         invoice_date: emptyField(),
+        due_date: emptyField(),
         net: emptyField(),
         vat: emptyField(),
         gross: emptyField(),
@@ -199,6 +202,7 @@ export const mockExtractor: Extractor = {
         vendor_name: field(vendor, 'vendor'),
         invoice_ref: emptyField(),
         invoice_date: emptyField(),
+        due_date: emptyField(),
         net: emptyField(),
         vat: emptyField(),
         gross: emptyField(),
@@ -228,6 +232,27 @@ export const mockExtractor: Extractor = {
       /(?:invoice\s*)?date\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
       /(?:invoice\s*)?date\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
     ]);
+    // Due date: an explicit "due date" line wins; otherwise derive it from
+    // stated payment terms (e.g. "Net 30" / "Payment terms: 30 days") added to
+    // the invoice date. Kept deterministic so mock runs are repeatable.
+    let dueDate = match(text, [
+      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
+      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
+      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
+    ]);
+    if (!dueDate && date) {
+      const termDays = match(text, [
+        /(?:payment\s*terms|terms)\s*[:.]?\s*(?:net\s*)?(\d{1,3})\s*days?/i,
+        /\bnet\s*(\d{1,3})\b/i,
+        /due\s*(?:in|within)\s*(\d{1,3})\s*days?/i,
+      ]);
+      const base = termDays ? parseInvoiceDate(date) : null;
+      if (base) {
+        const d = new Date(`${base}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + Number(termDays));
+        dueDate = d.toISOString().slice(0, 10);
+      }
+    }
     const net = match(text, [/(?:net\s*(?:total|amount)?|subtotal)\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
     const vatRate = match(text, [/vat\s*@\s*([\d.]+)\s*%/i]);
     const vat = match(text, [/vat(?:\s*@\s*[\d.]+\s*%)?\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
@@ -282,6 +307,7 @@ export const mockExtractor: Extractor = {
       vendor_name: field(vendor, 'vendor'),
       invoice_ref: field(ref, 'ref'),
       invoice_date: field(date, 'date'),
+      due_date: field(dueDate, 'due_date'),
       net: field(net, 'net'),
       vat: field(vat, 'vat'),
       gross: field(gross, 'gross'),

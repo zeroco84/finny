@@ -38,6 +38,7 @@ export function toSummary(r: InvoiceRow): InvoiceSummary {
     vendor_name: str(r.vendor_name),
     invoice_ref: str(r.invoice_ref),
     invoice_date: str(r.invoice_date),
+    due_date: str(r.due_date),
     gross_cents: num(r.gross_cents),
     currency: String(r.currency ?? 'EUR'),
     proposed_category: str(r.proposed_category),

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   vendor_normalized TEXT,
   invoice_ref TEXT,
   invoice_date TEXT,
+  due_date TEXT,
   net_cents INTEGER,
   vat_cents INTEGER,
   gross_cents INTEGER,
@@ -224,5 +225,33 @@ CREATE TABLE IF NOT EXISTS team_members (
 CREATE TABLE IF NOT EXISTS ingested_messages (
   message_id TEXT PRIMARY KEY,
   processed_at TEXT NOT NULL
+);
+
+-- Per-user notification subscriptions: each row watches for one event category
+-- and posts to the owner's own Teams webhook when an arriving invoice matches.
+-- webhook_url embeds a secret token and is never returned to any client.
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id TEXT PRIMARY KEY,
+  owner_email TEXT NOT NULL,
+  label TEXT NOT NULL,
+  webhook_url TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  params TEXT NOT NULL DEFAULT '{}',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_fired_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_websub_owner ON webhook_subscriptions(owner_email);
+
+-- One row per (subscription, invoice) that fired: makes delivery at-most-once
+-- per invoice per subscription and records whether the post succeeded.
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  subscription_id TEXT NOT NULL,
+  invoice_id TEXT NOT NULL,
+  fired_at TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  PRIMARY KEY (subscription_id, invoice_id)
 );
 `;

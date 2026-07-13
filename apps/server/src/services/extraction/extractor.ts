@@ -15,6 +15,8 @@ export interface ExtractionResult {
   vendor_name: ExtractedField;
   invoice_ref: ExtractedField;
   invoice_date: ExtractedField;
+  /** Payment due date as printed (yyyy-mm-dd when parseable), or null. */
+  due_date: ExtractedField;
   net: ExtractedField;
   vat: ExtractedField;
   gross: ExtractedField;

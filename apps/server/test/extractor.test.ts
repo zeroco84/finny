@@ -43,6 +43,9 @@ describe('sample invoice -> mock extractor round trip', () => {
     const gross = parseMoneyToCents(result.gross.value)!;
     expect(Math.abs(net + vat - gross)).toBeLessThanOrEqual(1);
     expect(result.vendor_name.confidence).toBeGreaterThan(0.8);
+    // A payment due date is printed on the sample and read back as a date.
+    expect(result.due_date.value).not.toBeNull();
+    expect(result.due_date.confidence).toBeGreaterThan(0.8);
     expect(result.proposed_category.name).toBe('Materials');
     // Billed-to entity resolves to one of the configured legal entities.
     expect(context.entities).toContain(result.billed_to_entity.value);

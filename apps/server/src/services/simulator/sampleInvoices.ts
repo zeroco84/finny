@@ -281,13 +281,18 @@ export async function generateSampleInvoice(opts: {
   const hasPo = scenario !== 'missing_po' && rng() < vendor.poChance;
   const po = `TW-PO-${4000 + Math.floor(rng() * 900)}`;
   const dateText = date.toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' });
+  // Payment terms vary by supplier (14/30/60 days) so the due-date extraction
+  // and the due-date notification rule have realistic spread to work with.
+  const termDays = [14, 30, 30, 60][Math.floor(rng() * 4)] ?? 30;
+  const dueDate = new Date(date.getTime() + termDays * 86_400_000);
+  const dueText = dueDate.toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const labels =
     vendor.style === 'caps'
-      ? { invoice: 'INVOICE #', date: 'DATE', po: 'PURCHASE ORDER', total: 'AMOUNT DUE' }
+      ? { invoice: 'INVOICE #', date: 'DATE', due: 'PAYMENT DUE', po: 'PURCHASE ORDER', total: 'AMOUNT DUE' }
       : vendor.style === 'ref'
-        ? { invoice: 'Our Ref', date: 'Invoice Date', po: 'Your Order Ref', total: 'Balance Due' }
-        : { invoice: 'Invoice No', date: 'Invoice Date', po: 'PO Number', total: 'Total Due (incl. VAT)' };
+        ? { invoice: 'Our Ref', date: 'Invoice Date', due: 'Due Date', po: 'Your Order Ref', total: 'Balance Due' }
+        : { invoice: 'Invoice No', date: 'Invoice Date', due: 'Due Date', po: 'PO Number', total: 'Total Due (incl. VAT)' };
 
   const entity = BILLED_ENTITIES[Math.floor(rng() * BILLED_ENTITIES.length)];
   const entityProjects = ENTITY_PROJECTS[entity];
@@ -307,6 +312,7 @@ export async function generateSampleInvoice(opts: {
   doc.moveDown(0.8);
   if (scenario !== 'no_ref') doc.text(`${labels.invoice}: ${ref}`);
   doc.text(`${labels.date}: ${dateText}`);
+  doc.text(`${labels.due}: ${dueText}`);
   if (hasPo) doc.text(`${labels.po}: ${po}`);
   if (projectRef) {
     doc.text(

@@ -27,6 +27,7 @@ function confirmSubmission(entity: string, project: string | null, ref: string):
       vendor_name: 'Hegarty Steel Ltd',
       invoice_ref: ref,
       invoice_date: '2026-07-01',
+      due_date: null,
       net_cents: 100000,
       vat_cents: 23000,
       gross_cents: 123000,

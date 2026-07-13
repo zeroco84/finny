@@ -11,6 +11,7 @@ interface FormState {
   vendor_name: string;
   invoice_ref: string;
   invoice_date: string;
+  due_date: string;
   net: string;
   vat: string;
   gross: string;
@@ -29,6 +30,7 @@ function fromDetail(d: InvoiceDetail): FormState {
     vendor_name: d.vendor_name ?? '',
     invoice_ref: d.invoice_ref ?? '',
     invoice_date: d.invoice_date ?? '',
+    due_date: d.due_date ?? '',
     net: centsToInput(d.net_cents),
     vat: centsToInput(d.vat_cents),
     gross: centsToInput(d.gross_cents),
@@ -92,6 +94,7 @@ export default function InvoiceDetailPage() {
       vendor_name: form.vendor_name.trim() || null,
       invoice_ref: form.invoice_ref.trim() || null,
       invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(form.invoice_date) ? form.invoice_date : null,
+      due_date: /^\d{4}-\d{2}-\d{2}$/.test(form.due_date) ? form.due_date : null,
       net_cents: inputToCents(form.net),
       vat_cents: inputToCents(form.vat),
       gross_cents: inputToCents(form.gross),
@@ -298,6 +301,10 @@ export default function InvoiceDetailPage() {
               {field('Invoice date', 'invoice_date', 'invoice_date', {
                 placeholder: 'yyyy-mm-dd',
                 aiValue: snapshot?.invoice_date,
+              })}
+              {field('Due date', 'due_date', 'due_date', {
+                placeholder: 'yyyy-mm-dd',
+                aiValue: snapshot?.due_date,
               })}
               {field('Net €', 'net', 'net', { aiValue: snapshot ? centsToInput(snapshot.net_cents) || null : null })}
               {field('VAT €', 'vat', 'vat', { aiValue: snapshot ? centsToInput(snapshot.vat_cents) || null : null })}
