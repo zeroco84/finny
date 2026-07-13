@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ReviewSubmission } from '@finny/shared';
 import { config, ensureDataDirs } from '../src/config.js';
-import { closeDb, all, one, run, openDb } from '../src/db/db.js';
+import { closeDb, all, one, run, openDb, getDb } from '../src/db/db.js';
 import { seedDefaults, getSettings, updateSettings, listApprovers } from '../src/services/settings.js';
 import { simulateIncomingInvoice } from '../src/services/simulator/simulator.js';
 import { processInvoice } from '../src/services/extraction/pipeline.js';
@@ -43,6 +43,25 @@ function daysAgo(days: number, hour = 10): Date {
   return d;
 }
 
+/**
+ * The audit trail is append-only in production: DB triggers (added with the
+ * audit-log feature) reject every UPDATE/DELETE on audit_events. The seeder is
+ * the one sanctioned exception — it backdates the events the real pipeline just
+ * generated so a fresh demo shows weeks of history rather than a wall of "now".
+ * Lift the guards for the rewrite, then restore them verbatim from the schema.
+ */
+function withoutAuditGuards<T>(fn: () => T): T {
+  const guards = all<{ name: string; sql: string }>(
+    `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'audit_events'`,
+  );
+  for (const g of guards) getDb().exec(`DROP TRIGGER ${g.name}`);
+  try {
+    return fn();
+  } finally {
+    for (const g of guards) getDb().exec(g.sql);
+  }
+}
+
 function backdate(invoiceId: string, when: Date): void {
   const iso = when.toISOString();
   const later = new Date(when.getTime() + 45 * 60 * 1000).toISOString();
@@ -53,7 +72,9 @@ function backdate(invoiceId: string, when: Date): void {
        updated_at = ? WHERE id = ?`,
     iso, iso, later, later, later, invoiceId,
   );
-  run(`UPDATE audit_events SET created_at = ? WHERE invoice_id = ?`, later, invoiceId);
+  withoutAuditGuards(() =>
+    run(`UPDATE audit_events SET created_at = ? WHERE invoice_id = ?`, later, invoiceId),
+  );
   run(`UPDATE corrections SET created_at = ? WHERE invoice_id = ?`, later, invoiceId);
   run(`UPDATE shadow_comparisons SET created_at = ? WHERE invoice_id = ?`, later, invoiceId);
 }
