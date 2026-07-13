@@ -4,6 +4,9 @@ import type {
   Approver,
   ApproverDirectory,
   ApproverSyncResult,
+  AuditLogFilterOptions,
+  AuditLogPage,
+  AuditLogQuery,
   ConnectorStatus,
   DashboardMetrics,
   InvoiceDetail,
@@ -68,6 +71,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message, res.status);
   }
   return (await res.json()) as T;
+}
+
+/** Query string from audit filters, skipping empty values (the server treats
+ *  absent and empty the same, but "" would fail the date-format validation). */
+function auditQs(params: AuditLogQuery & { before?: string; limit?: number }): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') qs.set(key, String(value));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : '';
 }
 
 const get = <T>(path: string) => request<T>(path);
@@ -161,6 +175,12 @@ export const api = {
   team: () => get<TeamDirectory>('/team'),
   syncTeam: () => post<TeamDirectory>('/team/sync'),
   setTeamRole: (email: string, role: TeamRole) => patch<TeamMember>('/team', { email, role }),
+
+  auditLog: (query: AuditLogQuery, opts?: { before?: string; limit?: number }) =>
+    get<AuditLogPage>(`/audit${auditQs({ ...query, ...opts })}`),
+  auditFilters: () => get<AuditLogFilterOptions>('/audit/filters'),
+  /** Same-origin download URL for the filtered audit trail (Lead only). */
+  auditCsvUrl: (query: AuditLogQuery) => `/api/audit/export.csv${auditQs(query)}`,
 
   simulateInvoice: (scenario: string, count = 1) => post<{ ids: string[] }>('/simulate/invoice', { scenario, count }),
   simulateApproval: (invoiceId: string, decision: 'approved' | 'rejected', note?: string) =>

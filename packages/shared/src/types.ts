@@ -130,6 +130,38 @@ export interface AuditEvent {
   created_at: string;
 }
 
+/** One row of the global audit log (AP Lead view) — the event plus display
+ *  context joined from the linked invoice, when there is one. */
+export interface AuditLogEvent extends AuditEvent {
+  entity: string | null;
+  vendor_name: string | null;
+}
+
+/** Filters accepted by GET /audit (all optional; dates are yyyy-mm-dd, inclusive). */
+export interface AuditLogQuery {
+  actor?: string;
+  type?: string;
+  entity?: string;
+  invoice_id?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+/** One page of GET /audit. `next_cursor` feeds the `before` param of the next
+ *  request; null when there are no older events. */
+export interface AuditLogPage {
+  events: AuditLogEvent[];
+  total: number;
+  next_cursor: string | null;
+}
+
+/** GET /audit/filters — distinct values for the filter dropdowns. */
+export interface AuditLogFilterOptions {
+  actors: string[];
+  types: string[];
+}
+
 export interface Correction {
   id: string;
   invoice_id: string;

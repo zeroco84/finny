@@ -13,6 +13,7 @@ import ExportsPage from './pages/Exports';
 import DashboardPage from './pages/Dashboard';
 import VolumePage from './pages/Volume';
 import SettingsPage from './pages/Settings';
+import AuditLogPage from './pages/AuditLog';
 import GuidePage from './pages/Guide';
 
 function Badge({ n, tone = 'default' }: { n: number | undefined; tone?: 'default' | 'alert' }) {
@@ -59,6 +60,7 @@ function Shell() {
           <NavLink to="/alerts">
             Alerts <Badge n={overview?.counts.open_alerts} tone="alert" />
           </NavLink>
+          {user.role === 'lead' && <NavLink to="/audit">Audit</NavLink>}
           <NavLink to="/settings">Settings</NavLink>
           <NavLink to="/guide">Guide</NavLink>
         </nav>
@@ -84,6 +86,7 @@ function Shell() {
           <Route path="/exports" element={<ExportsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
