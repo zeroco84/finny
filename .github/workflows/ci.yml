@@ -9,10 +9,12 @@ on:
   pull_request:
     branches: [main]
 
-# A newer push to the same branch/PR supersedes the in-flight run.
+# A newer push to a PR branch supersedes the in-flight run. Pushes to main are
+# never cancelled, so rapid back-to-back merges each keep a completed green
+# check instead of leaving the intermediate merge commits showing "cancelled".
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
