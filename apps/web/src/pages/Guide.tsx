@@ -251,17 +251,36 @@ export default function GuidePage() {
           </Chapter>
 
           <Chapter n={5} id="modes" title="Shadow vs live">
+            <p>
+              Finny runs in one of two modes. The only thing that changes for you is what the button at
+              the bottom of a review does — everything else about the job is identical.
+            </p>
             <Term label="Shadow">
-              The trust-building phase. Keep doing today's process; each review you log is compared with
-              the AI's proposal and nothing leaves Finny. The Dashboard turns this into the accuracy report.
+              You're grading Finny, not trusting it yet, so keep doing today's process exactly as normal —
+              your review here runs alongside it as a check. The button reads <strong>Log &amp; complete</strong>:
+              it records what you entered, compares it with the AI's proposal for the Dashboard, and{' '}
+              <strong>nothing is sent to Sage or Teams</strong>.
             </Term>
             <Term label="Live">
-              The real thing: Confirm &amp; Send fills the Sage export pool and creates the Teams approval.
+              Finny is now the process — no more parallel double-entry. The button reads{' '}
+              <strong>Confirm &amp; Send</strong>: it drops the invoice into the Sage export pool and raises
+              the Teams approval on its own.
             </Term>
-            <p className="muted">
-              The <Lead /> flips the mode in Settings. The bar for going live is evidence, not a date:
-              85%+ field accuracy on the Dashboard over a real shadow period.
-            </p>
+            <Callout>
+              You can always tell which mode you're in from that button label, and — in shadow — the{' '}
+              <strong>SHADOW MODE</strong> strip across the top of every page.
+            </Callout>
+            {user.role === 'lead' ? (
+              <p className="muted">
+                You flip the mode in <strong>Settings</strong>. The bar for going live is evidence, not a
+                date: 85%+ field accuracy on the Dashboard over a real shadow period.
+              </p>
+            ) : (
+              <p className="muted">
+                Your <Lead /> decides when to switch Finny from shadow to live — the call is based on the
+                accuracy the Dashboard has built up over the shadow period, not a fixed date.
+              </p>
+            )}
           </Chapter>
 
           <Chapter n={6} id="approvals" title="Teams approvals">
@@ -378,21 +397,56 @@ export default function GuidePage() {
           <Chapter n={9} id="notifications" title="Notifications">
             <p>
               Alerts are about things going <em>wrong</em>. <strong>Notifications</strong> are for things
-              you just want to <em>know about</em>. On the Notifications page you subscribe your own
-              <strong> Teams chat or channel</strong> to invoices that match criteria you pick — and only
-              you see and manage your own subscriptions.
+              you just want to <em>know about</em> — a big invoice landing, one for the site you look after,
+              a payment falling due soon. You set them up yourself on the <strong>Notifications</strong> page,
+              and they're private to you: nobody else sees or manages your subscriptions.
             </p>
-            <p>Each alert watches one category, and fires the moment a matching invoice arrives:</p>
+            <p>Each one watches a single category and fires the moment a matching invoice finishes reading and lands in the queue:</p>
             <ul>
               <li><strong>Invoice amount</strong> — gross at or over a figure you set.</li>
               <li><strong>Invoice / due date</strong> — post-dated, back-dated beyond N days, or due within N days.</li>
-              <li><strong>Supplier name</strong> — from a supplier you name (fuzzy, so “Ltd” and small typos still match).</li>
-              <li><strong>Project name</strong> — referencing a project you name or its code.</li>
+              <li><strong>Supplier name</strong> — a supplier you name (fuzzy, so “Ltd” and small typos still match).</li>
+              <li><strong>Project name</strong> — a project you name, by name or code.</li>
             </ul>
+
+            <h3 className="guide-subhead">How the Teams webhook works</h3>
             <p>
-              Paste the URL from Teams’ <strong>Workflows → “Post to a channel when a webhook request is
-              received”</strong>. It’s stored server-side and never shown again; use <strong>Send test</strong>
-              to check the wiring, and <strong>Pause</strong> to mute an alert without deleting it.
+              Finny has no bot or app inside Teams. Instead, Teams can hand out a private web address that
+              drops anything posted to it straight into a chat or channel you choose — that's a{' '}
+              <strong>Workflow</strong>. You create the Workflow, copy its address, and paste it into Finny;
+              from then on, when an invoice matches, Finny's server posts a card to that address and it
+              appears in your Teams.
+            </p>
+            <ol className="guide-steps">
+              <li><strong>Make the Workflow in Teams.</strong> Choose <strong>Workflows</strong> and pick the
+                template <strong>“Post to a channel when a webhook request is received”</strong>, then select
+                the chat or channel you want the pings in. Teams generates a URL — copy it.</li>
+              <li><strong>Add the alert in Finny.</strong> On <strong>Notifications → New alert</strong>, give
+                it a label, choose the event category, set its figure or name, and paste the URL into{' '}
+                <strong>Your Teams webhook URL</strong>. Press <strong>Create alert</strong>.</li>
+              <li><strong>Prove the wiring.</strong> Press <strong>Send test</strong> on the new alert — a
+                sample card should drop into that Teams chat or channel. Nothing there? The URL was mistyped
+                or the Workflow is switched off.</li>
+            </ol>
+            <Callout>
+              The card carries the supplier, amount, ref, invoice and due dates, project and entity, plus an{' '}
+              <strong>Open in Finny</strong> button that jumps straight to the invoice.
+            </Callout>
+
+            <Term label="Kept private">
+              Finny stores the URL server-side and never shows it again — the list only shows the Teams host
+              it points at. Treat the URL like a password: anyone who has it can post into that channel.
+            </Term>
+            <Term label="Pause, don't delete">
+              <strong>Pause</strong> mutes an alert but keeps its setup; <strong>Resume</strong> turns it back
+              on. <strong>Delete</strong> removes it for good.
+            </Term>
+            <Term label="No double-pings">
+              A given invoice pings each alert at most once, so you're never spammed twice about the same one.
+            </Term>
+            <p className="muted">
+              Only invoices that arrive from now on are checked — subscribing doesn't ping you about invoices
+              already sitting in the queue.
             </p>
           </Chapter>
 
