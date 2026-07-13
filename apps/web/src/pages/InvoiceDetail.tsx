@@ -4,6 +4,7 @@ import type { InvoiceDetail, ReviewSubmission } from '@finny/shared';
 import { api } from '../api';
 import { centsToInput, dateTime, euros, inputToCents, shortDate } from '../format';
 import { useMeta } from '../meta';
+import { AUDIT_LABELS } from '../audit';
 import { Banner, ConfidenceBadge, StatusChip } from '../components/ui';
 
 interface FormState {
@@ -41,33 +42,6 @@ function fromDetail(d: InvoiceDetail): FormState {
     project_code: d.project_code ?? '',
   };
 }
-
-const AUDIT_LABELS: Record<string, string> = {
-  received: 'Received',
-  extraction_started: 'Extraction started',
-  extraction_completed: 'Extracted',
-  extraction_failed: 'Extraction failed',
-  extraction_retry_requested: 'Extraction retry requested',
-  duplicate_flagged: 'Flagged as possible duplicate',
-  fields_corrected: 'Fields corrected',
-  shadow_logged: 'Shadow review logged',
-  confirmed: 'Confirmed',
-  discarded: 'Discarded',
-  rule_proposed: 'Routing rule proposed',
-  rule_proposal_updated: 'Routing rule proposal updated',
-  rule_auto_applied: 'Routing rule auto-applied',
-  rule_approved: 'Routing rule approved',
-  rule_rejected: 'Routing rule rejected',
-  approval_created: 'Sent for approval',
-  approval_failed: 'Approval creation failed',
-  approval_approved: 'Approved',
-  approval_rejected: 'Rejected',
-  sent_to_sage_batch: 'Added to Sage batch',
-  sage_batch_imported: 'Sage batch marked imported',
-  alert_raised: 'Alert raised',
-  alert_acknowledged: 'Alert acknowledged',
-  alert_resolved: 'Alert resolved',
-};
 
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();

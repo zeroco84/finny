@@ -145,6 +145,21 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_invoice ON audit_events(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events(created_at);
+
+-- Compliance: the audit trail is append-only. Nothing in the app updates or
+-- deletes events, and these triggers make that a database guarantee rather
+-- than a convention — any future code path that tries is rejected.
+CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+BEFORE UPDATE ON audit_events
+BEGIN
+  SELECT RAISE(ABORT, 'audit events are append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+BEFORE DELETE ON audit_events
+BEGIN
+  SELECT RAISE(ABORT, 'audit events are append-only');
+END;
 
 CREATE TABLE IF NOT EXISTS sage_batches (
   id TEXT PRIMARY KEY,

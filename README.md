@@ -280,6 +280,11 @@ and editable per invoice; Finny reuses the last-used ref per vendor.
   read from the document when referenced, assignable at review when not, and drive the Sage
   Dept column via each project's department number.
 - **Rejected invoices are terminal** in v1; the audit trail records who rejected and why.
+- **The audit trail is append-only and retained indefinitely.** Every user and system action —
+  sign-ins, reviews, rule changes, settings edits, Sage posts, data exports — writes an
+  `audit_events` row; database triggers reject any UPDATE or DELETE, so the trail is a
+  guarantee, not a convention. AP Leads get a filterable global view (Audit in the nav) and a
+  CSV export for auditors; exporting the trail is itself logged.
 - **Alerts don't auto-resolve** — a retried-and-fixed invoice leaves its alert open until a human
   resolves it, on the principle that the alert list is a to-do list, not a status mirror.
 - **Money is integer cents**, dates are ISO strings, timestamps UTC.

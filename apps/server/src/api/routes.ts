@@ -71,7 +71,7 @@ import { ensureTeamMemberOnSignIn, listTeam, setMemberRole, syncGroup, TeamError
 import { GraphAuthError } from '../services/graph/graphClient.js';
 import { all, one, run } from '../db/db.js';
 import { newId, nowIso } from '../domain/util.js';
-import { audit } from '../services/audit.js';
+import { audit, auditFilterOptions, auditLogCsv, listAuditLog } from '../services/audit.js';
 import { ingestAttachment } from '../services/ingestion/ingest.js';
 import { simulateIncomingInvoice } from '../services/simulator/simulator.js';
 import { recordApprovalDecision } from '../services/approvals/approvals.js';
@@ -142,10 +142,13 @@ export function buildRouter(): Router {
     // Seed/refresh the directory row and sign the cookie with the effective
     // role — an existing directory role wins over the picked one.
     const user = { ...parsed.data, role: ensureTeamMemberOnSignIn(parsed.data) };
+    audit(null, 'signed_in', user.email, { provider: 'dev', role: user.role });
     res.setHeader('Set-Cookie', createSessionCookie(user));
     res.json(user);
   });
-  router.post('/auth/logout', (_req, res) => {
+  router.post('/auth/logout', (req, res) => {
+    const user = readSession(req);
+    if (user) audit(null, 'signed_out', user.email, {});
     res.setHeader('Set-Cookie', clearSessionCookie());
     res.json({ ok: true });
   });
@@ -585,6 +588,9 @@ export function buildRouter(): Router {
       res.status(404).json({ error: 'Batch not found' });
       return;
     }
+    // Financial data leaving the system — worth a trail entry, like the
+    // tokenized attachment views.
+    audit(null, 'sage_batch_downloaded', req.user!.email, { batch_id: paramId(req), filename: batch.filename });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${batch.filename}"`);
     res.sendFile(filePath);
@@ -804,6 +810,50 @@ export function buildRouter(): Router {
       }
       throw err;
     }
+  });
+
+  // ── Audit log (AP Lead) ───────────────────────────────────────────────────
+  // The full user-action trail for compliance review. Events are append-only
+  // at the database level (schema triggers) and retained indefinitely.
+  const auditQuerySchema = z.object({
+    actor: z.string().max(320).optional(),
+    type: z.string().max(100).optional(),
+    entity: z.string().max(200).optional(),
+    invoice_id: z.string().max(60).optional(),
+    q: z.string().max(200).optional(),
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    before: z.string().max(80).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  });
+
+  router.get('/audit', requireLead, (req, res) => {
+    const parsed = auditQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid audit query' });
+      return;
+    }
+    const { before, limit, ...filters } = parsed.data;
+    res.json(listAuditLog(filters, { before, limit }));
+  });
+
+  router.get('/audit/filters', requireLead, (_req, res) => {
+    res.json(auditFilterOptions());
+  });
+
+  router.get('/audit/export.csv', requireLead, (req, res) => {
+    const parsed = auditQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid audit query' });
+      return;
+    }
+    const { before: _before, limit: _limit, ...filters } = parsed.data;
+    const { csv, rows, truncated } = auditLogCsv(filters);
+    // Handing the trail to someone is itself a compliance-relevant action.
+    audit(null, 'audit_exported', req.user!.email, { rows, truncated, filters });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="finny-audit-${nowIso().slice(0, 10)}.csv"`);
+    res.send(csv);
   });
 
   // ── Simulators (mock providers only) ──────────────────────────────────────
