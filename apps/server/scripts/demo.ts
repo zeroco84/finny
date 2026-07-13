@@ -184,6 +184,8 @@ async function main(): Promise<void> {
     });
     await processInvoice(id);
   }
+  const paymentRecId = await simulateIncomingInvoice({ scenario: 'payment_recommendation' });
+  await processInvoice(paymentRecId);
   const imageId = await simulateIncomingInvoice({ scenario: 'image' });
   await processInvoice(imageId);
   const corruptId = await simulateIncomingInvoice({ scenario: 'corrupt' });

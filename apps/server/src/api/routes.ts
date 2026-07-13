@@ -817,7 +817,7 @@ export function buildRouter(): Router {
       return;
     }
     const scenario = z
-      .enum(['normal', 'missing_po', 'no_ref', 'image', 'corrupt', 'statement'])
+      .enum(['normal', 'missing_po', 'no_ref', 'image', 'corrupt', 'statement', 'payment_recommendation'])
       .catch('normal')
       .parse(req.body?.scenario);
     const count = Math.max(1, Math.min(10, Number(req.body?.count ?? 1)));

@@ -13,7 +13,7 @@ export type InvoiceStatus =
   | 'rejected'
   | 'discarded';
 
-export type DocType = 'invoice' | 'statement' | 'remittance' | 'other' | null;
+export type DocType = 'invoice' | 'payment_recommendation' | 'statement' | 'remittance' | 'other' | null;
 
 /** Extraction fields that carry a per-field confidence score. */
 export const CONFIDENCE_FIELDS = [

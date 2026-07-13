@@ -63,6 +63,13 @@ export function parseInvoiceDate(input: string | null | undefined): string | nul
     const month = MONTHS[m[2].slice(0, 3).toLowerCase()];
     if (month) return `${m[3]}-${String(month).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   }
+  // "02-Jul-26" / "2 Jul 26" — the cost-estimating payment certificates use this.
+  m = s.match(/^(\d{1,2})[\s\/\-.]([A-Za-z]{3,}),?[\s\/\-.](\d{2,4})$/);
+  if (m) {
+    const month = MONTHS[m[2].slice(0, 3).toLowerCase()];
+    const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+    if (month) return `${year}-${String(month).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
   return null;
 }
 

@@ -78,8 +78,8 @@ const EXTRACTION_TOOL = {
     properties: {
       doc_type: {
         type: 'string',
-        enum: ['invoice', 'statement', 'remittance', 'other'],
-        description: 'What kind of document this is. Only "invoice" proceeds to data entry.',
+        enum: ['invoice', 'payment_recommendation', 'statement', 'remittance', 'other'],
+        description: 'What kind of document this is. "invoice" and "payment_recommendation" proceed to data entry.',
       },
       vendor_name: fieldSchema,
       invoice_ref: fieldSchema,
@@ -145,7 +145,7 @@ const EXTRACTION_TOOL = {
 
 const zField = z.object({ value: z.string().nullable(), confidence: z.number() });
 const zResult = z.object({
-  doc_type: z.enum(['invoice', 'statement', 'remittance', 'other']),
+  doc_type: z.enum(['invoice', 'payment_recommendation', 'statement', 'remittance', 'other']),
   vendor_name: zField, invoice_ref: zField, invoice_date: zField,
   net: zField, vat: zField, gross: zField,
   vat_rate: zField, vat_number: zField, po_number: zField,
@@ -169,6 +169,8 @@ function systemPrompt(context: RulesContext): string {
     '- Values must be exactly what is printed (amounts as plain decimals without currency symbols; dates converted to yyyy-mm-dd; keep reference/PO formatting verbatim).',
     '- Sanity-check amounts: net + VAT should equal gross. If they do not reconcile, still report what is printed but lower your confidence on the amount fields.',
     '- doc_type: only classify as "invoice" if this is a bill requesting payment. Supplier statements, remittance advice, marketing and anything else must be classified accordingly.',
+    '- doc_type "payment_recommendation": the company\'s cost-estimating team sends internal payment recommendations to AP — the document title contains "monthly payment recommendation" (e.g. "Subcontractor Monthly Payment Recommendation"). These are payable documents: always classify them as "payment_recommendation", never "other".',
+    '- For a payment_recommendation, fill the fields as for an invoice: vendor_name = the contractor/subcontractor being paid (not the principal contractor issuing the certificate); invoice_ref = the claim or certificate number as printed; net = the amount recommended for THIS certificate (never the cumulative "to date" or contract totals); po_number = the works-package PO if shown. When the document states VAT is to be accounted for by the principal contractor (reverse charge), set vat to "0.00", vat_rate to "0" and gross equal to net.',
     '- proposed_category.name must be one of the provided categories or null. proposed_approver.email must be one of the provided approver emails or null.',
     '- billed_to_entity.value: the business runs several legal entities — read the "Bill To"/addressee block and return the exact matching name from the provided legal_entities list, or null if it is unclear or matches none of them.',
     '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise null. Never invent project codes. Each project lists the legal entity it belongs to — when the billed-to entity is clear, prefer that entity\'s own projects and treat a cross-entity match as a reason to lower confidence.',

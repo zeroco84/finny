@@ -5,7 +5,7 @@ import { UnreadableDocumentError } from '../src/services/extraction/extractor.js
 import { parseMoneyToCents } from '../src/domain/util.js';
 
 const context = {
-  categories: [{ name: 'Materials' }],
+  categories: [{ name: 'Materials' }, { name: 'Subcontractors' }],
   entities: ['Meadowvale Developments Ltd', 'Meadowvale Construction Ltd', 'Meadowvale Asset Management Ltd'],
   projects: [
     { name: 'Clongriffin Phase 3', code: 'CLON3', entity: 'Meadowvale Developments Ltd' },
@@ -69,6 +69,28 @@ describe('sample invoice -> mock extractor round trip', () => {
     expect(result.gross.value).toBeNull();
     expect(result.invoice_ref.value).toBeNull();
     expect(result.proposed_category.name).toBeNull();
+  });
+
+  it('extracts a subcontractor payment recommendation as a payable document', async () => {
+    const generated = await generateSampleInvoice({ scenario: 'payment_recommendation', rng: seededRng(11) });
+    const result = await mockExtractor.extract(generated.buffer, 'application/pdf', context);
+
+    expect(result.doc_type).toBe('payment_recommendation');
+    // Vendor is the subcontractor being paid — never the certificate title.
+    expect(result.vendor_name.value).toMatch(/Ltd$/);
+    expect(result.vendor_name.value).not.toMatch(/payment recommendation/i);
+    // Ref is the claim number; net is this month's certificate amount, and the
+    // RCT reverse-charge note makes gross = net with zero VAT.
+    expect(result.invoice_ref.value).toBe(generated.ref);
+    expect(result.net.value).not.toBeNull();
+    expect(result.vat.value).toBe('0.00');
+    expect(result.gross.value).toBe(result.net.value);
+    expect(result.po_number.value).toMatch(/^\d+$/);
+    expect(result.invoice_date.value).not.toBeNull();
+    // Entity comes from the "for <entity>" signature; project from "Contract :".
+    expect(context.entities).toContain(result.billed_to_entity.value);
+    expect(context.projects.map((p) => p.code)).toContain(result.project.value);
+    expect(result.proposed_category.name).toBe('Subcontractors');
   });
 
   it('rejects corrupt files as unreadable', async () => {
