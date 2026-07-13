@@ -50,6 +50,7 @@ export default function InvoiceDetailPage() {
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -125,6 +126,32 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  async function revokeLinks() {
+    if (!id) return;
+    if (
+      !window.confirm(
+        'Revoke all shared attachment links for this invoice? Anyone holding one (Teams approval card, Sage document link) loses access immediately.',
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { revoked } = await api.revokeAttachmentLinks(id);
+      setNotice(
+        revoked > 0
+          ? `Revoked ${revoked} shared link${revoked > 1 ? 's' : ''} — resend the approval if the manager still needs access.`
+          : 'No active shared links to revoke.',
+      );
+      await load(); // pick up the audit trail entry
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Revoke failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function simulateDecision(decision: 'approved' | 'rejected') {
     if (!id) return;
     setBusy(true);
@@ -191,6 +218,7 @@ export default function InvoiceDetailPage() {
       </div>
 
       {error && <Banner kind="error">{error}</Banner>}
+      {notice && <Banner kind="info">{notice}</Banner>}
       {detail.extraction_error && (
         <Banner kind="error">
           Extraction failed: {detail.extraction_error}
@@ -513,6 +541,16 @@ export default function InvoiceDetailPage() {
 
           {user.role === 'lead' && detail.sage_batch_id && (
             <p className="muted small">In Sage batch {detail.sage_batch_id.slice(0, 8)} — see the Sage page.</p>
+          )}
+          {/* Tokenized document links go out with the Teams approval card and the
+              Sage post — offer the kill switch once either could have minted one. */}
+          {user.role === 'lead' && (detail.approval || detail.sage_batch_id) && (
+            <p className="muted small">
+              Shared attachment links (Teams approval card, Sage) can be revoked if one leaks or is forwarded:{' '}
+              <button className="btn btn-danger-ghost btn-small" disabled={busy} onClick={() => void revokeLinks()}>
+                Revoke links
+              </button>
+            </p>
           )}
           <p className="muted small">
             <button className="btn btn-ghost btn-small" onClick={() => navigate(-1)}>Back</button>
