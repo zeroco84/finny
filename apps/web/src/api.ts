@@ -35,9 +35,15 @@ export interface SageReferenceCheck {
     categories: { name: string; nominal_code: string; ok: boolean; sage_name: string | null; inactive: boolean }[];
     tax_codes: { rate: string | null; code: string; ok: boolean; rate_matches: boolean; sage_rate: number | null; sage_description: string | null }[];
     fallback_dept_ok: boolean;
-    projects: { code: string; name: string; dept: string; in_sage: boolean; dept_ok: boolean; sage_name: string | null }[];
+    projects: { code: string; name: string; dept: string; entity: string; in_sage: boolean; dept_ok: boolean; sage_name: string | null }[];
     missing_projects: { reference: string; name: string }[];
   };
+}
+
+/** One row of GET /sage/departments — a department in the entity's Sage company. */
+export interface SageDepartment {
+  reference: string;
+  name: string;
 }
 
 let reqSeq = 0;
@@ -137,6 +143,10 @@ export const api = {
   sageReference: (entity?: string) =>
     get<SageReferenceCheck>(`/sage/reference${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`),
   sageNominals: () => get<{ summary: { entity: string; count: number; pulled_at: string }[] }>('/sage/nominals'),
+  sageDepartments: (entity?: string) =>
+    get<{ configured: boolean; entity?: string; departments: SageDepartment[] }>(
+      `/sage/departments${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`,
+    ),
   pullNominals: (entity?: string) =>
     post<{ entity: string; pulled: number; categories: { name: string; nominal_code: string }[] }>(
       '/sage/nominals/pull',

@@ -202,6 +202,13 @@ label.field { display: flex; flex-direction: column; gap: 4px; }
 .row-link { text-decoration: none; color: inherit; display: block; }
 .row-actions { display: flex; gap: 6px; align-items: center; }
 
+/* Settings: one legal entity + its projects, grouped */
+.entity-group { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.entity-group .table { margin-bottom: 6px; }
+.entity-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.entity-head input { font-weight: 600; flex: 1; max-width: 440px; }
+.entity-group-unassigned { border-style: dashed; }
+
 .banner { border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 0.92rem; }
 .banner-info { background: var(--brand-soft); color: var(--brand-strong); }
 .banner-warn { background: var(--warn-soft); color: var(--warn); }

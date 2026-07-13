@@ -15,10 +15,12 @@ export const DEFAULT_SETTINGS: Settings = {
     'Meadowvale Construction Ltd',
     'Meadowvale Asset Management Ltd',
   ],
+  // One entity runs many projects (Developments carries two below); Asset
+  // Management runs none — overhead invoices post without a project.
   projects: [
-    { name: 'Clongriffin Phase 3', code: 'CLON3', dept: '26' },
-    { name: 'Dock Mill', code: 'DOCKM', dept: '28' },
-    { name: 'Santry Cross', code: 'SANTX', dept: '30' },
+    { name: 'Clongriffin Phase 3', code: 'CLON3', dept: '26', entity: 'Meadowvale Developments Ltd' },
+    { name: 'Dock Mill', code: 'DOCKM', dept: '28', entity: 'Meadowvale Construction Ltd' },
+    { name: 'Santry Cross', code: 'SANTX', dept: '30', entity: 'Meadowvale Developments Ltd' },
   ],
   categories: [
     { name: 'Site Costs', nominal_code: '5000' },
@@ -95,9 +97,13 @@ export function getSettings(): Settings {
   delete (settings as unknown as Record<string, unknown>).alert_webhook_url;
   // Shape migration: projects stored before depts existed get theirs
   // backfilled (seeded codes from the defaults, otherwise blank -> fallback).
+  // Projects stored before entities were attached come back unassigned ('') —
+  // the Settings UI surfaces them for the AP Lead to place; Finny never
+  // guesses which entity owns a project.
   settings.projects = settings.projects.map((p) => ({
     ...p,
     dept: p.dept ?? DEFAULT_SETTINGS.projects.find((d) => d.code === p.code)?.dept ?? '',
+    entity: p.entity ?? '',
   }));
   return settings;
 }

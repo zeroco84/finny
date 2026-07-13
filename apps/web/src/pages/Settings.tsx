@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { AiModel, ApproverDirectory, ConnectorStatus, Settings, TeamDirectory, TeamRole } from '@finny/shared';
-import { api, type SageReferenceCheck } from '../api';
+import type { AiModel, ApproverDirectory, ConnectorStatus, Project, Settings, TeamDirectory, TeamRole } from '@finny/shared';
+import { api, type SageDepartment, type SageReferenceCheck } from '../api';
 import { dateTime } from '../format';
 import { useMeta } from '../meta';
 import { Banner } from '../components/ui';
@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [refCheck, setRefCheck] = useState<SageReferenceCheck | null>(null);
   const [refBusy, setRefBusy] = useState(false);
   const [nominalSummary, setNominalSummary] = useState<{ entity: string; count: number; pulled_at: string }[]>([]);
+  const [deptsByEntity, setDeptsByEntity] = useState<Record<string, SageDepartment[]>>({});
   const [pullEntity, setPullEntity] = useState(settings.entities[0] ?? '');
   const [pullBusy, setPullBusy] = useState(false);
   const [team, setTeam] = useState<TeamDirectory | null>(null);
@@ -39,6 +40,26 @@ export default function SettingsPage() {
     void api.team().then(setTeam).catch(() => undefined);
     void api.approversDirectory().then(setApproverDir).catch(() => undefined);
   }, []);
+
+  // Department pickers: pull each entity's live department list from Sage via
+  // the HyperAccounts API ('' = the default server, used for the fallback dept
+  // and not-yet-assigned projects). Non-blocking — until a list arrives the
+  // Dept cells stay free-text. Keyed by SAVED entity names, so a renamed but
+  // unsaved entity falls back to free-text until saved.
+  const entitiesKey = settings.entities.join('\n'); // content key — refetch only when the list changes
+  useEffect(() => {
+    if (!isLead || !status || status.sage_entities.length === 0) return;
+    for (const ent of ['', ...settings.entities]) {
+      void api
+        .sageDepartments(ent || undefined)
+        .then((r) => {
+          if (r.configured && r.departments.length > 0) {
+            setDeptsByEntity((m) => ({ ...m, [ent]: r.departments }));
+          }
+        })
+        .catch(() => undefined); // no server for this entity, or it is down
+    }
+  }, [isLead, status, entitiesKey]);
 
   async function syncApprovers() {
     setApproverSyncBusy(true);
@@ -116,6 +137,68 @@ export default function SettingsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     }
+  }
+
+  // ── Legal entities & their projects ─────────────────────────────────────
+  function updateProject(pi: number, patch: Partial<Project>) {
+    setDraft((d) => ({ ...d, projects: d.projects.map((p, j) => (j === pi ? { ...p, ...patch } : p)) }));
+  }
+  function removeProject(pi: number) {
+    setDraft((d) => ({ ...d, projects: d.projects.filter((_, j) => j !== pi) }));
+  }
+  function renameEntity(i: number, to: string) {
+    // Projects follow their entity through a rename (they are linked by name).
+    setDraft((d) => {
+      const from = d.entities[i];
+      return {
+        ...d,
+        entities: d.entities.map((x, j) => (j === i ? to : x)),
+        projects: d.projects.map((p) => (p.entity === from ? { ...p, entity: to } : p)),
+      };
+    });
+  }
+  function removeEntity(i: number) {
+    // Its projects drop into "Not linked to an entity" rather than vanishing.
+    setDraft((d) => {
+      const name = d.entities[i];
+      return {
+        ...d,
+        entities: d.entities.filter((_, j) => j !== i),
+        projects: d.projects.map((p) => (p.entity === name ? { ...p, entity: '' } : p)),
+      };
+    });
+  }
+  function saveEntitiesProjects() {
+    const entities = Array.from(new Set(draft.entities.map((e) => e.trim()).filter(Boolean)));
+    void save({
+      entities,
+      projects: draft.projects
+        .filter((p) => p.name && p.code)
+        .map((p) => {
+          const entity = p.entity.trim();
+          return { ...p, entity: entities.includes(entity) ? entity : '' };
+        }),
+    });
+  }
+
+  /** Dept cell: a picker fed from the entity's live Sage departments when the
+   *  HyperAccounts server answered, otherwise a free-text input. */
+  function deptField(p: Project, update: (dept: string) => void) {
+    const opts = deptsByEntity[p.entity.trim()];
+    if (!opts?.length) {
+      return <input disabled={dis} value={p.dept ?? ''} placeholder="e.g. 26" onChange={(e) => update(e.target.value)} />;
+    }
+    return (
+      <select disabled={dis} value={p.dept ?? ''} onChange={(e) => update(e.target.value)}>
+        <option value="">— pick —</option>
+        {p.dept && !opts.some((d) => d.reference === p.dept) && (
+          <option value={p.dept}>{p.dept} (not in Sage)</option>
+        )}
+        {opts.map((d) => (
+          <option key={d.reference} value={d.reference}>{d.reference} — {d.name}</option>
+        ))}
+      </select>
+    );
   }
 
   async function saveApiKey() {
@@ -515,83 +598,109 @@ export default function SettingsPage() {
         <h2>Legal entities &amp; projects</h2>
         <p className="muted small">
           Entities are the companies invoices can be addressed to — each maps to its own Sage
-          company dataset, and exports batch per entity. Projects land in Sage's Project Refn.
+          company dataset, and exports batch per entity. Each entity runs its own projects
+          (they land in that entity's Sage Project Refn); Dept is the Sage department the
+          project's costs post to{sageConnected ? ', picked from the live Sage list' : ''}.
         </p>
-        <div className="dash-grid">
-          <div>
-            <table className="table table-compact">
-              <thead><tr><th>Entity</th><th /></tr></thead>
-              <tbody>
-                {draft.entities.map((ent, i) => (
-                  <tr key={i}>
-                    <td><input disabled={dis} value={ent} onChange={(e) => {
-                      const entities = [...draft.entities];
-                      entities[i] = e.target.value;
-                      setDraft({ ...draft, entities });
-                    }} /></td>
-                    <td>{isLead && (
-                      <button className="btn btn-small btn-danger-ghost"
-                        onClick={() => setDraft({ ...draft, entities: draft.entities.filter((_, j) => j !== i) })}>
-                        Remove
-                      </button>
-                    )}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {isLead && (
-              <button className="btn btn-small"
-                onClick={() => setDraft({ ...draft, entities: [...draft.entities, ''] })}>
-                Add entity
-              </button>
-            )}
-          </div>
-          <div>
-            <table className="table table-compact">
-              <thead><tr><th>Project</th><th>Code</th><th title="Sage department number for this site">Dept</th><th /></tr></thead>
-              <tbody>
-                {draft.projects.map((p, i) => (
-                  <tr key={i}>
-                    <td><input disabled={dis} value={p.name} onChange={(e) => {
-                      const projects = [...draft.projects];
-                      projects[i] = { ...p, name: e.target.value };
-                      setDraft({ ...draft, projects });
-                    }} /></td>
-                    <td><input disabled={dis} value={p.code} onChange={(e) => {
-                      const projects = [...draft.projects];
-                      projects[i] = { ...p, code: e.target.value.toUpperCase() };
-                      setDraft({ ...draft, projects });
-                    }} /></td>
-                    <td><input disabled={dis} value={p.dept ?? ''} onChange={(e) => {
-                      const projects = [...draft.projects];
-                      projects[i] = { ...p, dept: e.target.value };
-                      setDraft({ ...draft, projects });
-                    }} /></td>
-                    <td>{isLead && (
-                      <button className="btn btn-small btn-danger-ghost"
-                        onClick={() => setDraft({ ...draft, projects: draft.projects.filter((_, j) => j !== i) })}>
-                        Remove
-                      </button>
-                    )}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {isLead && (
-              <button className="btn btn-small"
-                onClick={() => setDraft({ ...draft, projects: [...draft.projects, { name: '', code: '', dept: '' }] })}>
-                Add project
-              </button>
-            )}
-          </div>
-        </div>
+        {draft.entities.map((ent, i) => {
+          const rows = draft.projects
+            .map((p, pi) => ({ p, pi }))
+            .filter(({ p }) => p.entity === ent);
+          return (
+            <div key={i} className="entity-group">
+              <div className="entity-head">
+                <input disabled={dis} value={ent} placeholder="Entity name"
+                  onChange={(e) => renameEntity(i, e.target.value)} />
+                {isLead && (
+                  <button className="btn btn-small btn-danger-ghost" onClick={() => removeEntity(i)}>
+                    Remove entity
+                  </button>
+                )}
+              </div>
+              {rows.length > 0 ? (
+                <table className="table table-compact">
+                  <thead><tr><th>Project</th><th>Code</th><th title="Sage department for this site/development">Dept</th><th /></tr></thead>
+                  <tbody>
+                    {rows.map(({ p, pi }) => (
+                      <tr key={pi}>
+                        <td><input disabled={dis} value={p.name}
+                          onChange={(e) => updateProject(pi, { name: e.target.value })} /></td>
+                        <td><input disabled={dis} value={p.code}
+                          onChange={(e) => updateProject(pi, { code: e.target.value.toUpperCase() })} /></td>
+                        <td>{deptField(p, (dept) => updateProject(pi, { dept }))}</td>
+                        <td>{isLead && (
+                          <button className="btn btn-small btn-danger-ghost" onClick={() => removeProject(pi)}>
+                            Remove
+                          </button>
+                        )}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="muted small">No projects yet — this entity's invoices post without a project.</p>
+              )}
+              {isLead && (
+                <button className="btn btn-small"
+                  onClick={() => setDraft({ ...draft, projects: [...draft.projects, { name: '', code: '', dept: '', entity: ent }] })}>
+                  Add project
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {(() => {
+          const unassigned = draft.projects
+            .map((p, pi) => ({ p, pi }))
+            .filter(({ p }) => p.entity === '' || !draft.entities.includes(p.entity));
+          if (unassigned.length === 0) return null;
+          return (
+            <div className="entity-group entity-group-unassigned">
+              <div className="entity-head"><strong>Not linked to an entity</strong></div>
+              <p className="muted small">
+                Saved before projects belonged to entities — usable on any invoice until assigned.
+              </p>
+              <table className="table table-compact">
+                <thead><tr><th>Project</th><th>Code</th><th>Dept</th><th>Entity</th><th /></tr></thead>
+                <tbody>
+                  {unassigned.map(({ p, pi }) => (
+                    <tr key={pi}>
+                      <td><input disabled={dis} value={p.name}
+                        onChange={(e) => updateProject(pi, { name: e.target.value })} /></td>
+                      <td><input disabled={dis} value={p.code}
+                        onChange={(e) => updateProject(pi, { code: e.target.value.toUpperCase() })} /></td>
+                      <td>{deptField(p, (dept) => updateProject(pi, { dept }))}</td>
+                      <td>
+                        <select disabled={dis} value={draft.entities.includes(p.entity) ? p.entity : ''}
+                          onChange={(e) => updateProject(pi, { entity: e.target.value })}>
+                          <option value="">— assign —</option>
+                          {draft.entities.filter(Boolean).map((e2) => (
+                            <option key={e2} value={e2}>{e2}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>{isLead && (
+                        <button className="btn btn-small btn-danger-ghost" onClick={() => removeProject(pi)}>
+                          Remove
+                        </button>
+                      )}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
         {isLead && (
-          <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => void save({
-            entities: draft.entities.map((e) => e.trim()).filter(Boolean),
-            projects: draft.projects.filter((p) => p.name && p.code),
-          })}>
-            Save entities &amp; projects
-          </button>
+          <div className="row-actions" style={{ marginTop: 10 }}>
+            <button className="btn btn-small"
+              onClick={() => setDraft({ ...draft, entities: [...draft.entities, ''] })}>
+              Add entity
+            </button>
+            <button className="btn btn-primary" onClick={saveEntitiesProjects}>
+              Save entities &amp; projects
+            </button>
+          </div>
         )}
       </div>
 
@@ -612,8 +721,20 @@ export default function SettingsPage() {
           </label>
           <label className="field field-tight">
             <span className="field-label" title="Dept used when an invoice has no project">Fallback dept</span>
-            <input disabled={dis} value={draft.sage_department}
-              onChange={(e) => setDraft({ ...draft, sage_department: e.target.value })} />
+            {deptsByEntity['']?.length ? (
+              <select disabled={dis} value={draft.sage_department}
+                onChange={(e) => setDraft({ ...draft, sage_department: e.target.value })}>
+                {draft.sage_department && !deptsByEntity[''].some((d) => d.reference === draft.sage_department) && (
+                  <option value={draft.sage_department}>{draft.sage_department} (not in Sage)</option>
+                )}
+                {deptsByEntity[''].map((d) => (
+                  <option key={d.reference} value={d.reference}>{d.reference} — {d.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input disabled={dis} value={draft.sage_department}
+                onChange={(e) => setDraft({ ...draft, sage_department: e.target.value })} />
+            )}
           </label>
           <label className="field field-tight">
             <span className="field-label" title='Next sequential posting reference (the "Inv27xxx" Ref column)'>Next Ref №</span>
@@ -719,7 +840,7 @@ export default function SettingsPage() {
                 <ul className="ref-list">
                   {refCheck.validation.projects.map((p) => (
                     <li key={p.code}>
-                      {p.code} ({p.name}){' '}
+                      {p.code} ({p.name}){p.entity ? <span className="muted small"> · {p.entity}</span> : ''}{' '}
                       {p.in_sage ? (
                         <span className="chip status-approved">✓ {p.sage_name}</span>
                       ) : (
@@ -738,11 +859,14 @@ export default function SettingsPage() {
                           {m.reference} ({m.name}){' '}
                           {isLead && (
                             <button className="btn btn-small" onClick={() => {
+                              const entity = refEntity && refEntity !== '*' ? refEntity : '';
                               setDraft({
                                 ...draft,
-                                projects: [...draft.projects, { name: m.name, code: m.reference, dept: draft.sage_department }],
+                                projects: [...draft.projects, { name: m.name, code: m.reference, dept: '', entity }],
                               });
-                              setNotice(`Added ${m.reference} to the projects list above — set its Dept, then press "Save entities & projects".`);
+                              setNotice(
+                                `Added ${m.reference} ${entity ? `under ${entity}` : 'to "Not linked to an entity"'} — pick its Dept, then press "Save entities & projects".`,
+                              );
                             }}>
                               Add to Finny
                             </button>

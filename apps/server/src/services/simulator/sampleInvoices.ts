@@ -94,17 +94,18 @@ export const VENDOR_TEMPLATES: VendorTemplate[] = [
 export type Scenario = 'normal' | 'missing_po' | 'no_ref' | 'image' | 'corrupt' | 'statement';
 
 // Kept aligned with the seeded settings (entities / projects) so the mock
-// extractor's list-matching has realistic work to do.
-const BILLED_ENTITIES = [
-  'Meadowvale Developments Ltd',
-  'Meadowvale Construction Ltd',
-  'Meadowvale Asset Management Ltd',
-];
-const PROJECT_REFS: [string, string][] = [
-  ['Clongriffin Phase 3', 'CLON3'],
-  ['Dock Mill', 'DOCKM'],
-  ['Santry Cross', 'SANTX'],
-];
+// extractor's list-matching has realistic work to do. Projects are drawn per
+// entity — a real supplier bills an entity for one of ITS jobs, and the
+// review flow now rejects cross-entity confirms.
+const ENTITY_PROJECTS: Record<string, [string, string][]> = {
+  'Meadowvale Developments Ltd': [
+    ['Clongriffin Phase 3', 'CLON3'],
+    ['Santry Cross', 'SANTX'],
+  ],
+  'Meadowvale Construction Ltd': [['Dock Mill', 'DOCKM']],
+  'Meadowvale Asset Management Ltd': [], // overheads only — no site projects
+};
+const BILLED_ENTITIES = Object.keys(ENTITY_PROJECTS);
 
 export interface GeneratedInvoice {
   buffer: Buffer;
@@ -217,8 +218,13 @@ export async function generateSampleInvoice(opts: {
         : { invoice: 'Invoice No', date: 'Invoice Date', po: 'PO Number', total: 'Total Due (incl. VAT)' };
 
   const entity = BILLED_ENTITIES[Math.floor(rng() * BILLED_ENTITIES.length)];
-  const projectRef = PROJECT_REFS[Math.floor(rng() * PROJECT_REFS.length)];
-  const hasProject = rng() < 0.65; // some invoices (overheads etc.) reference no project
+  const entityProjects = ENTITY_PROJECTS[entity];
+  // Some invoices (overheads etc.) reference no project — and an entity with
+  // no projects of its own never does.
+  const projectRef =
+    entityProjects.length > 0 && rng() < 0.65
+      ? entityProjects[Math.floor(rng() * entityProjects.length)]
+      : null;
 
   doc.fontSize(18).text(vendor.name);
   doc.fontSize(9).fillColor('#555').text(vendor.address);
@@ -230,7 +236,7 @@ export async function generateSampleInvoice(opts: {
   if (scenario !== 'no_ref') doc.text(`${labels.invoice}: ${ref}`);
   doc.text(`${labels.date}: ${dateText}`);
   if (hasPo) doc.text(`${labels.po}: ${po}`);
-  if (hasProject) {
+  if (projectRef) {
     doc.text(
       vendor.style === 'caps'
         ? `SITE/JOB: ${projectRef[1]}`

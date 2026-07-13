@@ -69,6 +69,7 @@ async function reviewInvoice(
   const routing = vendor ? ROUTING[vendor] : undefined;
   const approvers = listApprovers();
   const approver = routing ? approvers.find((a) => a.name === routing.approver) : undefined;
+  const settings = getSettings();
 
   const submission: ReviewSubmission = {
     action,
@@ -89,7 +90,13 @@ async function reviewInvoice(
     },
     category: routing?.category ?? 'Site Costs',
     approver_id: approver?.id ?? approvers[0].id,
-    entity: row.entity === null ? getSettings().entities[0] : String(row.entity),
+    // When extraction missed the entity, a referenced project pins it down
+    // (confirms reject a project posted against another entity's books).
+    entity:
+      row.entity !== null
+        ? String(row.entity)
+        : settings.projects.find((p) => p.code === row.project_code)?.entity ||
+          settings.entities[0],
     project_code: row.project_code === null ? null : String(row.project_code),
   };
   await submitReview(invoiceId, submission, who);

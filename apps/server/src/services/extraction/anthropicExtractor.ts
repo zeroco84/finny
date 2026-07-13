@@ -171,7 +171,7 @@ function systemPrompt(context: RulesContext): string {
     '- doc_type: only classify as "invoice" if this is a bill requesting payment. Supplier statements, remittance advice, marketing and anything else must be classified accordingly.',
     '- proposed_category.name must be one of the provided categories or null. proposed_approver.email must be one of the provided approver emails or null.',
     '- billed_to_entity.value: the business runs several legal entities — read the "Bill To"/addressee block and return the exact matching name from the provided legal_entities list, or null if it is unclear or matches none of them.',
-    '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise null. Never invent project codes.',
+    '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise null. Never invent project codes. Each project lists the legal entity it belongs to — when the billed-to entity is clear, prefer that entity\'s own projects and treat a cross-entity match as a reason to lower confidence.',
     '- If a learned vendor rule below matches this vendor, propose its category/approver with high confidence and say so in the rationale. Otherwise propose from the document contents with appropriately lower confidence.',
     '',
     'Structured context (learned rules layer — maintained and audited by the AP team):',

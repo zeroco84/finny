@@ -38,7 +38,7 @@ export interface ExtractionResult {
 export interface RulesContext {
   categories: { name: string }[];
   entities: string[];
-  projects: { name: string; code: string }[];
+  projects: { name: string; code: string; entity: string }[];
   approvers: { name: string; email: string }[];
   vendor_rules: { vendor: string; category: string | null; approver_email: string | null; confirmed: number }[];
   extraction_hints: { vendor: string; hint: string }[];
@@ -63,7 +63,7 @@ export function buildRulesContext(vendorNormalizedHint?: string | null): RulesCo
   return {
     categories: settings.categories.map((c) => ({ name: c.name })),
     entities: settings.entities,
-    projects: settings.projects.map((p) => ({ name: p.name, code: p.code })),
+    projects: settings.projects.map((p) => ({ name: p.name, code: p.code, entity: p.entity })),
     approvers: approvers.map((a) => ({ name: a.name, email: a.email })),
     vendor_rules: vendorRules,
     extraction_hints: hints,
