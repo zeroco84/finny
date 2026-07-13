@@ -12,6 +12,25 @@ import {
 import { parseMoneyToCents } from '../../domain/util.js';
 
 /**
+ * Classify supplier statements / remittance advices, anchored to the top of the
+ * document (title/header area). Anchoring matters: a genuine invoice often
+ * mentions "remittance advice" in a footer or payment-terms line, and matching
+ * the whole body would misfile it as a statement — silently removing a real
+ * bill from the review queue. Returns null for anything that should be reviewed.
+ */
+export function classifyStatementLike(text: string): 'statement' | 'remittance' | null {
+  const head = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+    .join('\n');
+  if (/remittance\s+advice/i.test(head)) return 'remittance';
+  if (/statement\s+of\s+(?:your\s+)?account/i.test(head)) return 'statement';
+  return null;
+}
+
+/**
  * Offline extractor: parses the PDF text layer with deterministic patterns.
  * It exists so the entire pipeline (queue, review, corrections, rules,
  * exports, approvals, alerts) runs end-to-end with zero API keys. Image
@@ -100,10 +119,10 @@ export const mockExtractor: Extractor = {
 
     // Statements and remittance advices: classify and stop — the pipeline
     // auto-files these instead of queueing them for review.
-    if (/statement\s+of\s+(?:your\s+)?account/i.test(text) || /remittance\s+advice/i.test(text)) {
-      const docType = /remittance\s+advice/i.test(text) ? 'remittance' : 'statement';
+    const statementLike = classifyStatementLike(text);
+    if (statementLike) {
       return {
-        doc_type: docType,
+        doc_type: statementLike,
         vendor_name: field(vendor, 'vendor'),
         invoice_ref: emptyField(),
         invoice_date: emptyField(),
@@ -116,7 +135,7 @@ export const mockExtractor: Extractor = {
         billed_to_entity: emptyField(),
         project: emptyField(),
         line_items: [],
-        proposed_category: { name: null, confidence: 0, rationale: `Not an invoice (${docType}) — no routing.` },
+        proposed_category: { name: null, confidence: 0, rationale: `Not an invoice (${statementLike}) — no routing.` },
         proposed_approver: { email_or_name: null, confidence: 0, rationale: 'Not an invoice.' },
       };
     }

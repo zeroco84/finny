@@ -126,6 +126,21 @@ export async function submitReview(
     if (submission.entity && !settings.entities.includes(submission.entity)) {
       throw new ReviewError('Unknown billed-to entity — add it in Settings first');
     }
+    // Duplicate gate: another live invoice with the same vendor + invoice number
+    // is almost certainly the same bill. Don't let a processor confirm it into
+    // the payable pool — an AP Lead is the override authority, and the override
+    // is audited. Re-checked against the final (human-edited) vendor and ref.
+    const dupVendor = f.vendor_name ? normalizeVendor(f.vendor_name) : null;
+    const duplicateOf = findDuplicate(invoiceId, dupVendor, f.invoice_ref ?? null);
+    if (duplicateOf) {
+      if (user.role !== 'lead') {
+        throw new ReviewError(
+          'This looks like a duplicate of an invoice already in Finny — an AP Lead must confirm it.',
+          409,
+        );
+      }
+      audit(invoiceId, 'duplicate_override', who, { duplicate_of: duplicateOf });
+    }
   }
   // Project is optional in every mode, but when set it must be a known one.
   if (submission.project_code && !settings.projects.some((p) => p.code === submission.project_code)) {
