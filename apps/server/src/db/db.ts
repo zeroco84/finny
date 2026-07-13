@@ -45,6 +45,19 @@ function migrate(database: DatabaseSync): void {
     updated_at TEXT NOT NULL,
     updated_by TEXT
   )`);
+  // Revocable, logged, single-purpose tokens backing the public attachment
+  // links embedded in Teams approval cards and Sage records.
+  database.exec(`CREATE TABLE IF NOT EXISTS attachment_tokens (
+    id TEXT PRIMARY KEY,
+    invoice_id TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    approver_id TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+  )`);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_attachment_tokens_invoice ON attachment_tokens(invoice_id)');
   // Alerts moved from email to a Teams webhook: rename the email_* delivery
   // columns to channel-agnostic delivery_* (preserving existing rows).
   const alertCols = database.prepare('PRAGMA table_info(alerts)').all() as { name: string }[];

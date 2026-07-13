@@ -75,7 +75,7 @@ import { audit } from '../services/audit.js';
 import { ingestAttachment } from '../services/ingestion/ingest.js';
 import { simulateIncomingInvoice } from '../services/simulator/simulator.js';
 import { recordApprovalDecision } from '../services/approvals/approvals.js';
-import { verifyAttachmentToken } from '../services/attachmentLinks.js';
+import { redeemAttachmentToken, revokeAttachmentLinks } from '../services/attachmentLinks.js';
 import { latestApproval, toSummary } from '../services/invoices.js';
 
 // Express 5 types route params as string | string[] (repeatable segments);
@@ -162,24 +162,42 @@ export function buildRouter(): Router {
   // Approving managers are not Finny users: the Teams approval card carries a
   // signed, expiring link so they can view the invoice without an account.
   router.get('/public/invoices/:id/attachment', (req, res) => {
-    const id = paramId(req);
-    const exp = typeof req.query.exp === 'string' ? req.query.exp : undefined;
-    const sig = typeof req.query.sig === 'string' ? req.query.sig : undefined;
-    const row = verifyAttachmentToken(id, exp, sig) ? getInvoiceRow(id) : undefined;
+    // The token is authoritative (it maps to the invoice); the path id is
+    // decorative. Redemption is logged with the caller's IP.
+    const redeemed = redeemAttachmentToken(
+      typeof req.query.t === 'string' ? req.query.t : undefined,
+      { ip: req.ip, ua: req.get('user-agent') },
+    );
+    const row = redeemed ? getInvoiceRow(redeemed.invoiceId) : undefined;
     if (!row || !row.attachment_path) {
       res
         .status(410)
         .type('html')
         .send(
           '<body style="font-family: system-ui, sans-serif; padding: 3rem; color: #1d2721; background: #f7f5f0">' +
-            '<h2>This invoice link is invalid or has expired</h2>' +
-            '<p>Links from approval requests are valid for 14 days. Ask the AP team to resend it from Finny.</p></body>',
+            '<h2>This invoice link is invalid, revoked or has expired</h2>' +
+            '<p>Ask the AP team to resend it from Finny.</p></body>',
         );
       return;
     }
-    res.setHeader('Content-Type', String(row.attachment_mime ?? 'application/octet-stream'));
-    res.setHeader('Content-Disposition', `inline; filename="${String(row.attachment_name ?? 'invoice')}"`);
+    const mime = String(row.attachment_mime ?? 'application/octet-stream');
+    // Defense-in-depth: never let a served attachment run as active content, and
+    // only render the known-safe types inline — anything else downloads.
+    const inlineOk = mime === 'application/pdf' || mime.startsWith('image/');
+    const filename = String(row.attachment_name ?? 'invoice').replace(/["\r\n]/g, '_');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${filename}"`);
     res.sendFile(String(row.attachment_path));
+  });
+
+  // Revoke every outstanding attachment link for an invoice (AP Lead) — kills a
+  // leaked or forwarded link without rotating the global session secret.
+  router.post('/invoices/:id/revoke-attachment-links', requireLead, (req, res) => {
+    const revoked = revokeAttachmentLinks(paramId(req), req.user!.email);
+    res.json({ revoked });
   });
 
   // ── BlockDocs pull endpoint (bearer token, no session) ────────────────────

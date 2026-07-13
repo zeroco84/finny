@@ -1,5 +1,6 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
+import { closeDb, openDb } from '../src/db/db.js';
 import { DEFAULT_SETTINGS } from '../src/services/settings.js';
 import {
   buildPurchaseInvoicePayload,
@@ -31,7 +32,10 @@ describe('buildPurchaseInvoicePayload', () => {
   beforeAll(() => {
     config.sessionSecret = 'test-secret';
     config.appUrl = 'https://finny.test';
+    // buildPurchaseInvoicePayload now persists an attachment-link token.
+    openDb(':memory:');
   });
+  afterAll(() => closeDb());
 
   it('maps a Finny line onto the TransactionPost shape', () => {
     const p = buildPurchaseInvoicePayload('inv-1', line, DEFAULT_SETTINGS);
@@ -49,8 +53,8 @@ describe('buildPurchaseInvoicePayload', () => {
     expect(item.projectRef).toBe('CLON3');
     expect(item.exRef).toBe('PO 8749'); // 7 chars, within the 8-char cap
     expect(item.isNegativeLine).toBe(0);
-    // externalFileURL is required by the API — a long-lived tokenized link.
-    expect(item.externalFileURL).toContain('/api/public/invoices/inv-1/attachment?exp=');
+    // externalFileURL is required by the API — a revocable, capped token link.
+    expect(item.externalFileURL).toContain('/api/public/invoices/inv-1/attachment?t=');
   });
 
   it('zero-VAT lines carry the 0% tax code as an integer (T9 -> 9)', () => {

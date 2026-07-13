@@ -43,6 +43,10 @@ export const config = {
   // On Render, RENDER_EXTERNAL_URL is the service's public URL — used in
   // alert-email links and tokenized attachment links when APP_URL isn't set.
   appUrl: env('APP_URL', env('RENDER_EXTERNAL_URL', 'http://localhost:5173')),
+  // Tokenized attachment links (Teams approval cards, Sage document links) are
+  // capped at this many days, so a leaked link is never a decade-long
+  // unauthenticated capability. Links are also individually revocable.
+  attachmentLinkMaxTtlDays: Number(env('ATTACHMENT_LINK_MAX_TTL_DAYS', '365')),
 
   mailProvider: env('MAIL_PROVIDER', 'mock') as 'mock' | 'graph',
   mailPollSeconds: Number(env('MAIL_POLL_SECONDS', '60')),
