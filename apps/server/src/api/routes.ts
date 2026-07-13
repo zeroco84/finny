@@ -196,13 +196,6 @@ export function buildRouter(): Router {
     res.sendFile(String(row.attachment_path));
   });
 
-  // Revoke every outstanding attachment link for an invoice (AP Lead) — kills a
-  // leaked or forwarded link without rotating the global session secret.
-  router.post('/invoices/:id/revoke-attachment-links', requireLead, (req, res) => {
-    const revoked = revokeAttachmentLinks(paramId(req), req.user!.email);
-    res.json({ revoked });
-  });
-
   // ── BlockDocs pull endpoint (bearer token, no session) ────────────────────
   // Machine-to-machine: BlockDocs polls approved, project-tagged invoices for
   // its budget-vs-invoiced dashboard. Returns approved_at — Finny stops at
@@ -285,6 +278,15 @@ export function buildRouter(): Router {
     res.setHeader('Content-Type', String(row.attachment_mime ?? 'application/octet-stream'));
     res.setHeader('Content-Disposition', `inline; filename="${String(row.attachment_name ?? 'attachment')}"`);
     res.sendFile(String(row.attachment_path));
+  });
+
+  // Revoke every outstanding tokenized attachment link for an invoice (AP
+  // Lead) — kills a leaked or forwarded link without rotating the global
+  // session secret. Must stay below the requireAuth gate: requireLead reads
+  // req.user, which only requireAuth populates.
+  router.post('/invoices/:id/revoke-attachment-links', requireLead, (req, res) => {
+    const revoked = revokeAttachmentLinks(paramId(req), req.user!.email);
+    res.json({ revoked });
   });
 
   const reviewSchema = z.object({

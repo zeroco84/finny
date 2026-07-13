@@ -112,6 +112,9 @@ export const api = {
   retryExtraction: (id: string) => post<{ ok: boolean }>(`/invoices/${id}/retry-extraction`),
   reopenInvoice: (id: string) => post<InvoiceDetail>(`/invoices/${id}/reopen`),
   retryApproval: (id: string) => post<InvoiceDetail>(`/invoices/${id}/retry-approval`),
+  /** Kill every outstanding tokenized attachment link for an invoice (Lead only). */
+  revokeAttachmentLinks: (id: string) =>
+    post<{ revoked: number }>(`/invoices/${id}/revoke-attachment-links`),
   upload: async (file: File): Promise<{ id: string }> => {
     const res = await fetch(`/api/invoices/upload?filename=${encodeURIComponent(file.name)}`, {
       method: 'POST',
