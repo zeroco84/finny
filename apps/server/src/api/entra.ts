@@ -81,7 +81,7 @@ function sign(payload: string): string {
 }
 
 function secureSuffix(): string {
-  return config.appUrl.startsWith('https') ? '; Secure' : '';
+  return config.cookieSecure ? '; Secure' : '';
 }
 
 export function buildFlowCookie(flow: FlowState): string {

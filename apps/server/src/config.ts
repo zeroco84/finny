@@ -33,6 +33,16 @@ const authProvider = env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra';
 const simulatorEnabled =
   env('ENABLE_SIMULATOR', authProvider === 'dev' ? 'true' : 'false') === 'true';
 
+// Session cookies get Secure unless we are plainly running local dev over http
+// — tied to the auth provider (production uses entra), so a misconfigured
+// APP_URL scheme can't silently ship a non-Secure session cookie. Override with
+// COOKIE_SECURE=true|false.
+const cookieSecure = env('COOKIE_SECURE', authProvider === 'entra' ? 'true' : 'false') === 'true';
+// Max session lifetime, enforced server-side: a signed cookie is rejected past
+// this age, so a captured cookie is not replayable indefinitely. Entra SSO
+// re-auth is seamless, so a short window costs users nothing.
+const sessionMaxHours = Number(env('SESSION_MAX_HOURS', '12'));
+
 export const config = {
   port: Number(env('PORT', '4787')),
   dataDir,
@@ -112,6 +122,8 @@ export const config = {
   },
 
   authProvider,
+  cookieSecure,
+  sessionMaxHours,
   // Entra ID SSO (AUTH_PROVIDER=entra). The ENTRA_* vars fall back to the
   // GRAPH_* app registration — one registration can serve both mail polling
   // (application permission) and user sign-in (web redirect URI).

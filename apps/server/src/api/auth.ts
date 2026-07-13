@@ -26,15 +26,16 @@ function sign(payload: string): string {
   return crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url');
 }
 
-/** Cookies are marked Secure whenever the app's public URL is https. */
+/** Cookies are marked Secure in production (not merely when APP_URL is https). */
 function secureSuffix(): string {
-  return config.appUrl.startsWith('https') ? '; Secure' : '';
+  return config.cookieSecure ? '; Secure' : '';
 }
 
 export function createSessionCookie(user: SessionUser): string {
   const payload = Buffer.from(JSON.stringify({ ...user, iat: Date.now() })).toString('base64url');
   const value = `${payload}.${sign(payload)}`;
-  return `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}${secureSuffix()}`;
+  const maxAgeSeconds = Math.max(0, Math.round(config.sessionMaxHours * 60 * 60));
+  return `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSeconds}${secureSuffix()}`;
 }
 
 export function clearSessionCookie(): string {
@@ -60,6 +61,11 @@ export function readSession(req: Request): SessionUser | null {
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()) as SessionUser & { iat: number };
     if (!parsed.email || (parsed.role !== 'processor' && parsed.role !== 'lead')) return null;
+    // Enforce the max session lifetime server-side — the browser Max-Age is only
+    // a hint, so without this a captured cookie stays valid until the secret
+    // rotates. A stale/replayed cookie past the window is rejected.
+    const maxAgeMs = config.sessionMaxHours * 60 * 60 * 1000;
+    if (typeof parsed.iat !== 'number' || Date.now() - parsed.iat > maxAgeMs) return null;
     // The cookie authenticates identity; the role is resolved live from the
     // team directory so a privilege change applies on the next request without
     // re-login. Fall back to the signed role if the directory is unreachable.
