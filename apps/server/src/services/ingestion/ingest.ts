@@ -38,8 +38,12 @@ export async function ingestAttachment(
   const ext = path.extname(filename).toLowerCase();
   const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream';
   const safeName = path.basename(filename).replace(/[^\w.\- ]/g, '_');
+  // Oversized attachments are never written to disk or parsed — they are the
+  // untrusted-mailbox DoS surface (disk fill, decompression bombs). Record the
+  // invoice for the audit trail, then park it as failed.
+  const oversized = buffer.byteLength > config.attachmentMaxBytes;
   const storedPath = path.join(config.attachmentsDir, `${newId()}-${safeName}`);
-  fs.writeFileSync(storedPath, buffer);
+  if (!oversized) fs.writeFileSync(storedPath, buffer);
 
   const invoiceId = createInvoice({
     source: meta.source,
@@ -58,6 +62,24 @@ export async function ingestAttachment(
     subject: meta.emailSubject ?? null,
     attachment: safeName,
   });
+
+  if (oversized) {
+    const capMb = Math.round(config.attachmentMaxBytes / (1024 * 1024));
+    const gotMb = (buffer.byteLength / (1024 * 1024)).toFixed(1);
+    run(
+      `UPDATE invoices SET status = 'extraction_failed', extraction_error = ?, updated_at = ? WHERE id = ?`,
+      `Attachment too large (${gotMb} MB exceeds the ${capMb} MB limit) — not stored or parsed`,
+      nowIso(),
+      invoiceId,
+    );
+    audit(invoiceId, 'extraction_failed', 'system', { error: `attachment exceeds ${capMb} MB cap`, size: buffer.byteLength });
+    await raiseAlert('unreadable_attachment', {
+      invoiceId,
+      attachmentName: safeName,
+      error: `attachment is ${gotMb} MB — over the ${capMb} MB limit`,
+    });
+    return invoiceId;
+  }
 
   if (!MIME_BY_EXT[ext]) {
     run(
