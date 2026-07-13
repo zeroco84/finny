@@ -64,6 +64,9 @@ export interface Project {
   name: string;
   code: string; // short code shown in Finny and used in Details
   dept: string; // Sage department number for this site/development (Dept column)
+  /** Legal entity this project belongs to — one entity runs many projects.
+   *  '' = not yet assigned (legacy rows); usable with any entity until assigned. */
+  entity: string;
 }
 
 export interface Approver {

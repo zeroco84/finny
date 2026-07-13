@@ -29,6 +29,8 @@ export interface ProjectCheck {
   code: string;
   name: string;
   dept: string;
+  /** Entity the project is assigned to ('' = unassigned, checked everywhere). */
+  entity: string;
   in_sage: boolean;
   dept_ok: boolean;
   sage_name: string | null;
@@ -64,11 +66,21 @@ function checkTaxCode(code: string, rate: string | null, ref: SageReference): Ta
   };
 }
 
-export function validateAgainstSage(settings: Settings, ref: SageReference): ReferenceValidation {
+export function validateAgainstSage(
+  settings: Settings,
+  ref: SageReference,
+  entity: string | null = null,
+): ReferenceValidation {
   const nominalByRef = new Map(ref.nominals.map((n) => [n.accountRef, n]));
   const deptRefs = new Set(ref.departments.map((d) => d.reference));
   const projectByRef = new Map(ref.projects.map((p) => [p.reference.toUpperCase(), p]));
   const finnyCodes = new Set(settings.projects.map((p) => p.code.toUpperCase()));
+  // One Sage company holds one entity's projects — when a specific entity is
+  // being checked, another entity's projects are EXPECTED to be absent, so
+  // only that entity's own (plus still-unassigned) projects are validated.
+  const scopedProjects = settings.projects.filter(
+    (p) => !entity || !p.entity || p.entity === entity,
+  );
 
   return {
     categories: settings.categories.map((c) => {
@@ -86,12 +98,13 @@ export function validateAgainstSage(settings: Settings, ref: SageReference): Ref
       checkTaxCode(settings.default_tax_code, null, ref),
     ],
     fallback_dept_ok: deptRefs.has(settings.sage_department),
-    projects: settings.projects.map((p) => {
+    projects: scopedProjects.map((p) => {
       const sage = projectByRef.get(p.code.toUpperCase());
       return {
         code: p.code,
         name: p.name,
         dept: p.dept,
+        entity: p.entity,
         in_sage: Boolean(sage),
         dept_ok: deptRefs.has(p.dept),
         sage_name: sage ? sage.name : null,

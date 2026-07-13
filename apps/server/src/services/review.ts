@@ -146,6 +146,18 @@ export async function submitReview(
   if (submission.project_code && !settings.projects.some((p) => p.code === submission.project_code)) {
     throw new ReviewError('Unknown project — add it in Settings first');
   }
+  // Confirming posts to one entity's books, and a Sage project ref lives in
+  // exactly one company dataset — so the project must belong to the billed-to
+  // entity. Projects not yet assigned to an entity are allowed anywhere;
+  // shadow logs stay loose (they record today's manual process, not a posting).
+  if (submission.action === 'confirm' && submission.project_code && submission.entity) {
+    const project = settings.projects.find((p) => p.code === submission.project_code);
+    if (project?.entity && project.entity !== submission.entity) {
+      throw new ReviewError(
+        `Project ${project.code} belongs to ${project.entity} — pick one of ${submission.entity}'s projects, or clear the project.`,
+      );
+    }
+  }
 
   // ── Structured feedback: diff human values against the AI snapshot ────────
   const snapshot = ((): ExtractionSnapshot | null => {

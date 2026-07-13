@@ -290,6 +290,19 @@ export async function fetchActiveNominals(server: SageServer): Promise<SageNomin
 }
 
 /**
+ * The entity's live department list — feeds the Settings department pickers,
+ * so Dept codes are chosen from what Sage actually contains, not typed from
+ * memory. Bounded: the UI fires one of these per entity on page load, and a
+ * dead on-prem box must not hold the page hostage.
+ */
+export async function fetchDepartments(server: SageServer): Promise<SageDepartment[]> {
+  const out = await haFetch<{ results?: SageDepartment[] }>(server, '/api/department', {
+    signal: AbortSignal.timeout(8000),
+  });
+  return out.results ?? [];
+}
+
+/**
  * Pull the company's live reference lists — chart of accounts, tax codes,
  * departments, projects — so Finny's mappings can be validated against what
  * Sage actually contains instead of being typed from memory.

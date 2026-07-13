@@ -73,6 +73,28 @@ describe('validateAgainstSage', () => {
     expect(v.missing_projects).toEqual([{ reference: 'BALLY1', name: 'Ballymore Rise' }]);
   });
 
+  it('scopes project checks to the entity being validated (one Sage company per entity)', () => {
+    // Checking Construction's own company: Developments' projects are expected
+    // to be absent there, so they are not flagged — only DOCKM is checked.
+    const scoped = validateAgainstSage(DEFAULT_SETTINGS, ref, 'Meadowvale Construction Ltd');
+    expect(scoped.projects.map((p) => p.code)).toEqual(['DOCKM']);
+    expect(scoped.projects[0]).toMatchObject({ entity: 'Meadowvale Construction Ltd', in_sage: true });
+
+    // Projects not yet assigned to an entity are still checked everywhere.
+    const withUnassigned = validateAgainstSage(
+      {
+        ...DEFAULT_SETTINGS,
+        projects: [...DEFAULT_SETTINGS.projects, { name: 'Legacy Job', code: 'LEG1', dept: '0', entity: '' }],
+      },
+      ref,
+      'Meadowvale Construction Ltd',
+    );
+    expect(withUnassigned.projects.map((p) => p.code)).toEqual(['DOCKM', 'LEG1']);
+
+    // No entity given (default server) = today's behavior, everything checked.
+    expect(v.projects.map((p) => p.code)).toEqual(['CLON3', 'DOCKM', 'SANTX']);
+  });
+
   it('handles junk tax codes without throwing', () => {
     const v3 = validateAgainstSage(
       { ...DEFAULT_SETTINGS, default_tax_code: 'EXEMPT' },

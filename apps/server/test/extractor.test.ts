@@ -8,9 +8,9 @@ const context = {
   categories: [{ name: 'Materials' }],
   entities: ['Meadowvale Developments Ltd', 'Meadowvale Construction Ltd', 'Meadowvale Asset Management Ltd'],
   projects: [
-    { name: 'Clongriffin Phase 3', code: 'CLON3' },
-    { name: 'Dock Mill', code: 'DOCKM' },
-    { name: 'Santry Cross', code: 'SANTX' },
+    { name: 'Clongriffin Phase 3', code: 'CLON3', entity: 'Meadowvale Developments Ltd' },
+    { name: 'Dock Mill', code: 'DOCKM', entity: 'Meadowvale Construction Ltd' },
+    { name: 'Santry Cross', code: 'SANTX', entity: 'Meadowvale Developments Ltd' },
   ],
   approvers: [],
   vendor_rules: [],

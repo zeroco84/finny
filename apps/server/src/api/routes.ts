@@ -50,7 +50,7 @@ import {
   sendBatchToSage,
   syncPostingSequence,
 } from '../services/sage.js';
-import { configuredSageEntities, fetchActiveNominals, fetchSageReference, resolveSageServer } from '../services/sage/hyperaccounts.js';
+import { configuredSageEntities, fetchActiveNominals, fetchDepartments, fetchSageReference, resolveSageServer } from '../services/sage/hyperaccounts.js';
 import { validateAgainstSage } from '../services/sage/reference.js';
 import { pullSummary, storePulledNominals } from '../services/sage/nominals.js';
 import { dashboardMetrics, volumeMetrics } from '../services/metrics.js';
@@ -521,10 +521,29 @@ export function buildRouter(): Router {
           departments: reference.departments.length,
           projects: reference.projects.length,
         },
-        validation: validateAgainstSage(getSettings(), reference),
+        // Scoped to the entity being checked — its own Sage company can't be
+        // expected to contain another entity's projects.
+        validation: validateAgainstSage(getSettings(), reference, entity),
       });
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Sage reference pull failed' });
+    }
+  });
+
+  // Live department list for one entity's Sage company — feeds the Settings
+  // department pickers so Dept codes are chosen from Sage, not typed from
+  // memory. Read-only against Sage.
+  router.get('/sage/departments', requireLead, async (req, res) => {
+    const entity = typeof req.query.entity === 'string' && req.query.entity !== '' ? req.query.entity : null;
+    const server = resolveSageServer(entity);
+    if (!server) {
+      res.json({ configured: false, departments: [] });
+      return;
+    }
+    try {
+      res.json({ configured: true, entity: server.entity, departments: await fetchDepartments(server) });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Sage department pull failed' });
     }
   });
 

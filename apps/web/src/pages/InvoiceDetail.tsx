@@ -104,6 +104,13 @@ export default function InvoiceDetailPage() {
   const editable = detail?.status === 'needs_review' || detail?.status === 'extraction_failed';
   const snapshot = detail?.extraction_snapshot ?? null;
 
+  // The billed-to entity's own projects, plus any not yet assigned to one —
+  // a Sage project ref lives in exactly one entity's dataset, so the picker
+  // only offers projects the confirm will accept. No entity chosen = show all.
+  const entityProjects = settings.projects.filter(
+    (p) => !p.entity || !form?.entity || p.entity === form.entity,
+  );
+
   const submission = useMemo((): ReviewSubmission['fields'] | null => {
     if (!form) return null;
     return {
@@ -387,7 +394,21 @@ export default function InvoiceDetailPage() {
                   onChange={(e) => setForm({ ...form, project_code: e.target.value })}
                 >
                   <option value="">— none —</option>
-                  {settings.projects.map((p) => (
+                  {/* Only the billed-to entity's projects (plus any not yet
+                      assigned to an entity) — a project posts to exactly one
+                      entity's books. Keep the stored value selectable so a
+                      cross-entity leftover is visible rather than vanishing. */}
+                  {form.project_code && !entityProjects.some((p) => p.code === form.project_code) && (
+                    <option value={form.project_code}>
+                      {(() => {
+                        const stored = settings.projects.find((p) => p.code === form.project_code);
+                        return stored
+                          ? `${stored.name} (${stored.code}) — ${stored.entity}'s project`
+                          : `${form.project_code} (no longer in the list)`;
+                      })()}
+                    </option>
+                  )}
+                  {entityProjects.map((p) => (
                     <option key={p.code} value={p.code}>{p.name} ({p.code})</option>
                   ))}
                 </select>
