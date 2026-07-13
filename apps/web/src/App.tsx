@@ -63,7 +63,7 @@ function Shell() {
           </NavLink>
           <NavLink to="/notifications">Notifications</NavLink>
           {user.role === 'lead' && <NavLink to="/audit">Audit</NavLink>}
-          <NavLink to="/settings">Settings</NavLink>
+          {user.role === 'lead' && <NavLink to="/settings">Settings</NavLink>}
           <NavLink to="/guide">Guide</NavLink>
         </nav>
         <div className="topbar-user">
@@ -88,8 +88,14 @@ function Shell() {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/exports" element={<ExportsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/audit" element={<AuditLogPage />} />
+          <Route
+            path="/settings"
+            element={user.role === 'lead' ? <SettingsPage /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/audit"
+            element={user.role === 'lead' ? <AuditLogPage /> : <Navigate to="/" replace />}
+          />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
