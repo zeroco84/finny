@@ -1,0 +1,67 @@
+/* Finny · Hum theme tokens (Hallmark · genre: playful)
+ * Portable design tokens for the app-wide "bubble" redesign.
+ * The live app consumes these via apps/web/src/styles.css :root.
+ * Cream paper · multi-accent (pear/cyan/coral/mint) · rounded-sans · big radii. */
+
+:root {
+  /* ── Type ─────────────────────────────────────────────────────────── */
+  --font-body: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;   /* display + body */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace; /* labels + counters */
+
+  /* ── Paper & ink — cream, never pure white; near-black cool ink ───── */
+  --color-paper:    oklch(96.5% 0.014 95);   /* page ground */
+  --color-paper-2:  oklch(93.5% 0.022 95);   /* tinted band / hover */
+  --color-surface:  oklch(99% 0.006 95);     /* card — warm near-white */
+  --color-ink:      oklch(24% 0.014 260);    /* near-black, cool tilt */
+  --color-ink-2:    oklch(48% 0.012 260);    /* muted */
+  --color-rule:     oklch(89% 0.015 95);     /* hairline */
+
+  /* ── Accents (multi) ──────────────────────────────────────────────── */
+  --color-pear:      oklch(87% 0.17 95);     /* primary action face (dark ink on it) */
+  --color-pear-deep: oklch(74% 0.16 92);     /* button edge / hover */
+  --color-pear-soft: oklch(94.5% 0.065 95);  /* tint surface */
+
+  --color-cyan:      oklch(66% 0.16 235);    /* links / info / secondary */
+  --color-cyan-deep: oklch(52% 0.15 245);    /* link text (AA on cream) */
+  --color-cyan-soft: oklch(94% 0.04 235);
+
+  --color-coral:      oklch(64% 0.21 22);    /* danger / the one pop */
+  --color-coral-deep: oklch(52% 0.19 25);
+  --color-coral-soft: oklch(94% 0.05 25);
+
+  --color-mint:      oklch(72% 0.15 155);    /* success */
+  --color-mint-deep: oklch(50% 0.13 158);
+  --color-mint-soft: oklch(93% 0.05 155);
+
+  --color-amber:      oklch(72% 0.13 70);    /* warnings / shadow-mode */
+  --color-amber-deep: oklch(50% 0.12 66);
+  --color-amber-soft: oklch(94% 0.06 75);
+
+  --color-lav:      oklch(72% 0.14 305);     /* occasional / "confirmed" */
+  --color-lav-deep: oklch(50% 0.14 300);
+  --color-lav-soft: oklch(94% 0.045 305);
+
+  --color-focus:    oklch(52% 0.15 245);     /* cyan ring */
+
+  /* ── Shape — big and rounded, no square corners ───────────────────── */
+  --radius-card:  20px;
+  --radius-input: 12px;
+  --radius-pill:  999px;
+  --radius-sm:    11px;
+
+  /* ── Soft lifting shadows: tight contact + soft ambient ───────────── */
+  --shadow:       0 1px 2px oklch(24% 0.014 260 / 0.06), 0 14px 34px -18px oklch(24% 0.014 260 / 0.20);
+  --shadow-hover: 0 2px 5px oklch(24% 0.014 260 / 0.08), 0 22px 46px -20px oklch(24% 0.014 260 / 0.26);
+  --btn-cast:     oklch(74% 0.16 92 / 0.40);
+
+  /* ── Spacing (4-pt scale) ─────────────────────────────────────────── */
+  --space-3xs: 0.25rem; --space-2xs: 0.5rem;  --space-xs: 0.75rem;
+  --space-sm:  1rem;     --space-md:  1.5rem;  --space-lg: 2rem;
+  --space-xl:  3rem;     --space-2xl: 4.5rem;  --space-3xl: 7rem;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);  /* bouncy overshoot */
+  --ease-snap:    cubic-bezier(0.22, 1, 0.36, 1);     /* tick-ups / presses */
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+}
