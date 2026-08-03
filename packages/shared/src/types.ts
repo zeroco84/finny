@@ -255,7 +255,8 @@ export type AlertType =
   | 'sage_duplicate_detected'
   | 'sage_sequence_adjusted'
   | 'teams_api_failure'
-  | 'mailbox_auth_failure';
+  | 'mailbox_auth_failure'
+  | 'mail_message_failed';
 
 export interface Alert {
   id: string;

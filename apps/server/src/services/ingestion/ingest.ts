@@ -26,6 +26,15 @@ export interface IngestMeta {
 }
 
 /**
+ * Filesystem- and UI-safe attachment name. Exported so the mail poller can ask
+ * "did a previous attempt at this message already ingest this attachment?"
+ * using the same name that got stored.
+ */
+export function safeAttachmentName(filename: string): string {
+  return path.basename(filename).replace(/[^\w.\- ]/g, '_');
+}
+
+/**
  * Store an attachment and create the invoice record. Supported types enter
  * the extraction queue; anything else is parked as failed with an immediate
  * unreadable-attachment alert (spec: no invoice silently fails).
@@ -37,7 +46,7 @@ export async function ingestAttachment(
 ): Promise<string> {
   const ext = path.extname(filename).toLowerCase();
   const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream';
-  const safeName = path.basename(filename).replace(/[^\w.\- ]/g, '_');
+  const safeName = safeAttachmentName(filename);
   // Oversized attachments are never written to disk or parsed — they are the
   // untrusted-mailbox DoS surface (disk fill, decompression bombs). Record the
   // invoice for the audit trail, then park it as failed.

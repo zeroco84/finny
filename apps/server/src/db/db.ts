@@ -46,6 +46,19 @@ function migrate(database: DatabaseSync): void {
     updated_at TEXT NOT NULL,
     updated_by TEXT
   )`);
+  // Bounded-retry bookkeeping for mailbox messages that fail to ingest, so one
+  // bad email can never hold the Graph watermark (and every invoice behind it).
+  database.exec(`CREATE TABLE IF NOT EXISTS mail_message_failures (
+    message_id TEXT PRIMARY KEY,
+    subject TEXT,
+    email_from TEXT,
+    received_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL,
+    first_failed_at TEXT NOT NULL,
+    last_attempt_at TEXT NOT NULL,
+    parked INTEGER NOT NULL DEFAULT 0
+  )`);
   // Revocable, logged, single-purpose tokens backing the public attachment
   // links embedded in Teams approval cards and Sage records.
   database.exec(`CREATE TABLE IF NOT EXISTS attachment_tokens (
