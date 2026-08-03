@@ -114,6 +114,22 @@ const TEMPLATES: Record<AlertType, Template> = {
     nextStep:
       'IT: check the Graph app registration (client secret expiry, Mail.Read permission on the shared mailbox) and the network. Finny retries automatically each poll.',
   },
+  // Raised only after the per-message retry budget is spent. The mailbox itself
+  // is healthy — everything behind this message keeps flowing — but this one
+  // email needs a human, and nothing else will tell anyone about it.
+  mail_message_failed: {
+    severity: 'critical',
+    subject: (ctx) =>
+      `[Finny] Invoice email skipped after repeated failures: ${ctx.attachmentName ?? 'no subject'}`,
+    body: (ctx) =>
+      `Finny could not process an email in the shared mailbox after ${ctx.extra ?? 'several attempts'} ` +
+      `(${ctx.error ?? 'unknown error'}).\n\n` +
+      `From: ${ctx.vendor ?? 'unknown sender'}\n\n` +
+      `No invoice was created. So that later invoices keep flowing, Finny has stopped retrying this ` +
+      `one message — nothing else in the mailbox is held up by it.`,
+    nextStep:
+      'Open that email in the shared mailbox and handle it by hand: re-send the attachment to the mailbox, or upload it in Finny.',
+  },
 };
 
 /** The configured Teams webhook — a value stored in Settings wins over the env default. */

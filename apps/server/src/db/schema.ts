@@ -227,6 +227,22 @@ CREATE TABLE IF NOT EXISTS ingested_messages (
   processed_at TEXT NOT NULL
 );
 
+-- Mailbox messages that failed to ingest. The poller retries each one a bounded
+-- number of times, then parks it (parked = 1): alerted, never retried, and no
+-- longer holding the watermark. Without this a single unprocessable email stops
+-- every invoice behind it in the mailbox, silently and indefinitely.
+CREATE TABLE IF NOT EXISTS mail_message_failures (
+  message_id TEXT PRIMARY KEY,
+  subject TEXT,
+  email_from TEXT,
+  received_at TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL,
+  first_failed_at TEXT NOT NULL,
+  last_attempt_at TEXT NOT NULL,
+  parked INTEGER NOT NULL DEFAULT 0
+);
+
 -- Per-user notification subscriptions: each row watches for one event category
 -- and posts to the owner's own Teams webhook when an arriving invoice matches.
 -- webhook_url embeds a secret token and is never returned to any client.
