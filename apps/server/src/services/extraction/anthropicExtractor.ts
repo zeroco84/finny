@@ -61,15 +61,30 @@ export function buildAttachmentBlock(buffer: Buffer, mime: string): Anthropic.Co
   );
 }
 
+/**
+ * The API rejects a tool schema with more than this many union-typed
+ * parameters ("type arrays or anyOf") — the compilation cost is exponential.
+ * See extractionSchemaLimits.test.ts, which fails before the API does.
+ */
+export const UNION_PARAM_LIMIT = 16;
+
+// `value` is a plain string, NOT ["string","null"]. Every extracted field
+// reuses this object, so a nullable `value` spent one of the 16 union slots per
+// field and the ceiling moved every time a field was added — adding due_date,
+// billed_to_entity and project took the schema to 17 and the API started
+// rejecting every extraction with a 400. Absent/illegible is an empty string,
+// normalised back to null in zField below so the rest of the pipeline is
+// unchanged. Nullability that carries real meaning (a category or approver the
+// model declined to choose) still uses a union; those are fixed in number.
 const fieldSchema = { type: 'object' as const, properties: {
-  value: { type: ['string', 'null'] as const, description: 'Exact value as printed on the document, or null if absent/illegible' },
-  confidence: { type: 'number' as const, description: 'Your confidence 0..1 that the value is correct; 0 when null' },
+  value: { type: 'string' as const, description: 'Exact value as printed on the document; empty string if absent or illegible' },
+  confidence: { type: 'number' as const, description: 'Your confidence 0..1 that the value is correct; 0 when the value is empty' },
 }, required: ['value', 'confidence'], additionalProperties: false as const };
 
 // `strict: true` (GA strict tool use — guarantees the input validates against
 // the schema) is accepted by the API but not yet in this SDK version's Tool
 // type, hence the cast below. Zod re-validates as defence in depth.
-const EXTRACTION_TOOL = {
+export const EXTRACTION_TOOL = {
   name: 'record_extraction',
   description: 'Record the structured data extracted from the supplier document.',
   strict: true,
@@ -84,7 +99,7 @@ const EXTRACTION_TOOL = {
       vendor_name: fieldSchema,
       invoice_ref: fieldSchema,
       invoice_date: { ...fieldSchema, description: 'Invoice date formatted as yyyy-mm-dd' },
-      due_date: { ...fieldSchema, description: 'Payment due date formatted as yyyy-mm-dd. If only payment terms are stated (e.g. "Net 30"), compute it from the invoice date; null if neither is present.' },
+      due_date: { ...fieldSchema, description: 'Payment due date formatted as yyyy-mm-dd. If only payment terms are stated (e.g. "Net 30"), compute it from the invoice date; empty string if neither is present.' },
       net: { ...fieldSchema, description: 'Net (ex-VAT) amount as a plain decimal string, e.g. "1234.56"' },
       vat: { ...fieldSchema, description: 'VAT amount as a plain decimal string' },
       gross: { ...fieldSchema, description: 'Gross (inc-VAT) total as a plain decimal string' },
@@ -93,11 +108,11 @@ const EXTRACTION_TOOL = {
       po_number: { ...fieldSchema, description: 'Purchase order number if present' },
       billed_to_entity: {
         ...fieldSchema,
-        description: 'Which of the provided legal entities this invoice is addressed to (exact name from the list), or null',
+        description: 'Which of the provided legal entities this invoice is addressed to (exact name from the list), or empty string',
       },
       project: {
         ...fieldSchema,
-        description: 'The CODE of the provided project this document references (by name, code or site), or null',
+        description: 'The CODE of the provided project this document references (by name, code or site), or empty string',
       },
       line_items: {
         type: 'array',
@@ -144,7 +159,12 @@ const EXTRACTION_TOOL = {
   },
 } as unknown as Anthropic.Tool;
 
-const zField = z.object({ value: z.string().nullable(), confidence: z.number() });
+// The model reports an absent field as an empty string (see fieldSchema);
+// normalise it back to null here so everything downstream — clamp(), the
+// confidence gate, the review UI — keeps treating "missing" as null.
+const zField = z
+  .object({ value: z.string(), confidence: z.number() })
+  .transform((f) => ({ value: f.value.trim() === '' ? null : f.value, confidence: f.confidence }));
 const zResult = z.object({
   doc_type: z.enum(['invoice', 'payment_recommendation', 'statement', 'remittance', 'other']),
   vendor_name: zField, invoice_ref: zField, invoice_date: zField, due_date: zField,
@@ -166,15 +186,15 @@ function systemPrompt(context: RulesContext): string {
     'You are the invoice-extraction engine for Finny, an accounts-payable intake tool. You read one supplier document per request and record its header data with the record_extraction tool.',
     '',
     'Hard rules:',
-    '- Never fabricate a value. If a field is absent or illegible, set value to null and confidence to 0. A blank field is always better than a guessed one — this data feeds the accounting system.',
+    '- Never fabricate a value. If a field is absent or illegible, set value to an empty string and confidence to 0. A blank field is always better than a guessed one — this data feeds the accounting system.',
     '- Values must be exactly what is printed (amounts as plain decimals without currency symbols; dates converted to yyyy-mm-dd; keep reference/PO formatting verbatim).',
     '- Sanity-check amounts: net + VAT should equal gross. If they do not reconcile, still report what is printed but lower your confidence on the amount fields.',
     '- doc_type: only classify as "invoice" if this is a bill requesting payment. Supplier statements, remittance advice, marketing and anything else must be classified accordingly.',
     '- doc_type "payment_recommendation": the company\'s cost-estimating team sends internal payment recommendations to AP — the document title contains "monthly payment recommendation" (e.g. "Subcontractor Monthly Payment Recommendation"). These are payable documents: always classify them as "payment_recommendation", never "other".',
     '- For a payment_recommendation, fill the fields as for an invoice: vendor_name = the contractor/subcontractor being paid (not the principal contractor issuing the certificate); invoice_ref = the claim or certificate number as printed; net = the amount recommended for THIS certificate (never the cumulative "to date" or contract totals); po_number = the works-package PO if shown. When the document states VAT is to be accounted for by the principal contractor (reverse charge), set vat to "0.00", vat_rate to "0" and gross equal to net.',
     '- proposed_category.name must be one of the provided categories or null. proposed_approver.email must be one of the provided approver emails or null.',
-    '- billed_to_entity.value: the business runs several legal entities — read the "Bill To"/addressee block and return the exact matching name from the provided legal_entities list, or null if it is unclear or matches none of them.',
-    '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise null. Never invent project codes. Each project lists the legal entity it belongs to — when the billed-to entity is clear, prefer that entity\'s own projects and treat a cross-entity match as a reason to lower confidence.',
+    '- billed_to_entity.value: the business runs several legal entities — read the "Bill To"/addressee block and return the exact matching name from the provided legal_entities list, or an empty string if it is unclear or matches none of them.',
+    '- project.value: if the document references one of the provided projects (by name, code, or the site/development it relates to), return that project\'s CODE from the list; otherwise an empty string. Never invent project codes. Each project lists the legal entity it belongs to — when the billed-to entity is clear, prefer that entity\'s own projects and treat a cross-entity match as a reason to lower confidence.',
     '- If a learned vendor rule below matches this vendor, propose its category/approver with high confidence and say so in the rationale. Otherwise propose from the document contents with appropriately lower confidence.',
     '',
     'Structured context (learned rules layer — maintained and audited by the AP team):',
