@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../../config.js';
+import { TABULAR_MIME_BY_EXT } from '../extraction/tabular.js';
 import { newId } from '../../domain/util.js';
 import { createInvoice } from '../invoices.js';
 import { audit } from '../audit.js';
@@ -15,7 +16,18 @@ const MIME_BY_EXT: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  // Suppliers send invoices as workbooks and CSV exports as readily as PDFs.
+  // Converted to text before extraction — see extraction/tabular.ts.
+  // TIFF and BMP are deliberately absent: the extraction model accepts only
+  // PNG, JPEG, GIF and WebP, so accepting them here would move the failure
+  // from ingest to extraction rather than remove it. They need server-side
+  // transcoding first.
+  ...TABULAR_MIME_BY_EXT,
 };
+
+/** For the operator-facing message on an attachment Finny cannot read. */
+const SUPPORTED_LABEL =
+  'PDF, images (PNG, JPG, GIF, WebP), spreadsheets (XLSX, XLS, ODS) and text (CSV, TSV, TXT)';
 
 export interface IngestMeta {
   source: string;
@@ -93,7 +105,7 @@ export async function ingestAttachment(
   if (!MIME_BY_EXT[ext]) {
     run(
       `UPDATE invoices SET status = 'extraction_failed', extraction_error = ?, updated_at = ? WHERE id = ?`,
-      `Unsupported attachment type "${ext || 'no extension'}" — Finny accepts PDF, PNG and JPG`,
+      `Unsupported attachment type "${ext || 'no extension'}" — Finny reads ${SUPPORTED_LABEL}`,
       nowIso(),
       invoiceId,
     );

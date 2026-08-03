@@ -55,7 +55,8 @@ approvals, and one open unreadable-attachment alert. Re-seed anytime with `npm r
 
 You can also ingest real invoices with zero setup: drop PDFs (or PNG/JPG/GIF/WebP photos —
 with Claude extraction these are read by vision exactly like PDFs; images over 5MB are parked
-with an actionable alert) into `apps/server/data/inbox/`
+with an actionable alert — or XLSX/XLS/ODS workbooks and CSV/TSV/TXT files, which are converted
+to text before extraction) into `apps/server/data/inbox/`
 (the watched folder standing in for the mailbox) or use **Upload invoice** on the queue.
 
 ---
@@ -137,7 +138,7 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
    `New-ApplicationAccessPolicy -AccessRight RestrictAccess`, then
    `Test-ApplicationAccessPolicy` to prove Granted/Denied).
 3. Set `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `MAIL_PROVIDER=graph`.
-4. The poller reads new mail with attachments (PDF/PNG/JPG), dedupes by message id, keeps a
+4. The poller reads new mail with attachments (PDF, images, spreadsheets, text), dedupes by message id, keeps a
    watermark, and optionally marks mail read (`GRAPH_MARK_READ`). **First run starts from "now"**
    — it does NOT ingest the mailbox's historical backlog unless you ask for it with
    `GRAPH_BACKFILL_DAYS` (e.g. `7` to pull the last week). Auth failures raise the

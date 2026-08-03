@@ -19,6 +19,7 @@
     "openid-client": "^6.8.4",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.24.0"
   },
   "devDependencies": {

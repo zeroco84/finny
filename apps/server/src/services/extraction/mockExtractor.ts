@@ -11,6 +11,7 @@ import {
 } from './extractor.js';
 import { parseInvoiceDate, parseMoneyToCents } from '../../domain/util.js';
 import { classifyStatementLike, isPaymentRecommendation } from './docSteering.js';
+import { isTabular, renderTabular } from './tabular.js';
 
 /**
  * Offline extractor: parses the PDF text layer with deterministic patterns.
@@ -143,7 +144,7 @@ export const mockExtractor: Extractor = {
   name: 'mock',
 
   async extract(buffer: Buffer, mime: string, context: RulesContext): Promise<ExtractionResult> {
-    if (mime !== 'application/pdf') {
+    if (mime !== 'application/pdf' && !isTabular(mime)) {
       // Images: no OCR in the mock provider — flag everything for the human.
       return {
         doc_type: 'invoice',
@@ -169,6 +170,12 @@ export const mockExtractor: Extractor = {
       };
     }
 
+    // Spreadsheets and CSVs already are text — render the cells and run them
+    // through the same deterministic patterns as a PDF's text layer.
+    if (isTabular(mime)) {
+      return extractFromText(renderTabular(buffer, mime), context);
+    }
+
     // pdf-parse's bundled (old) pdf.js reads the WHOLE underlying ArrayBuffer,
     // but Buffers usually live at an offset inside Node's shared 8KB pool —
     // neighbouring slab bytes then corrupt the parse ("bad XRef entry").
@@ -190,141 +197,150 @@ export const mockExtractor: Extractor = {
       throw new UnreadableDocumentError('PDF contains no readable text layer');
     }
 
-    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-    const vendor = lines[0] ?? null;
-
-    // Statements and remittance advices: classify and stop — the pipeline
-    // auto-files these instead of queueing them for review.
-    const statementLike = classifyStatementLike(text);
-    if (statementLike) {
-      return {
-        doc_type: statementLike,
-        vendor_name: field(vendor, 'vendor'),
-        invoice_ref: emptyField(),
-        invoice_date: emptyField(),
-        due_date: emptyField(),
-        net: emptyField(),
-        vat: emptyField(),
-        gross: emptyField(),
-        vat_rate: emptyField(),
-        vat_number: emptyField(),
-        po_number: emptyField(),
-        billed_to_entity: emptyField(),
-        project: emptyField(),
-        line_items: [],
-        proposed_category: { name: null, confidence: 0, rationale: `Not an invoice (${statementLike}) — no routing.` },
-        proposed_approver: { email_or_name: null, confidence: 0, rationale: 'Not an invoice.' },
-      };
-    }
-
-    // Internal payment recommendations: payable like an invoice, but the
-    // certificate layout needs its own extraction patterns.
-    if (isPaymentRecommendation(text)) {
-      return extractPaymentRecommendation(text, context);
-    }
-
-    const ref = match(text, [
-      /invoice\s*(?:no|number|#)\.?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
-      /our\s*ref\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
-    ]);
-    const date = match(text, [
-      /(?:invoice\s*)?date\s*[:.]?\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
-      /(?:invoice\s*)?date\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
-      /(?:invoice\s*)?date\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
-    ]);
-    // Due date: an explicit "due date" line wins; otherwise derive it from
-    // stated payment terms (e.g. "Net 30" / "Payment terms: 30 days") added to
-    // the invoice date. Kept deterministic so mock runs are repeatable.
-    let dueDate = match(text, [
-      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
-      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
-      /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
-    ]);
-    if (!dueDate && date) {
-      const termDays = match(text, [
-        /(?:payment\s*terms|terms)\s*[:.]?\s*(?:net\s*)?(\d{1,3})\s*days?/i,
-        /\bnet\s*(\d{1,3})\b/i,
-        /due\s*(?:in|within)\s*(\d{1,3})\s*days?/i,
-      ]);
-      const base = termDays ? parseInvoiceDate(date) : null;
-      if (base) {
-        const d = new Date(`${base}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + Number(termDays));
-        dueDate = d.toISOString().slice(0, 10);
-      }
-    }
-    const net = match(text, [/(?:net\s*(?:total|amount)?|subtotal)\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
-    const vatRate = match(text, [/vat\s*@\s*([\d.]+)\s*%/i]);
-    const vat = match(text, [/vat(?:\s*@\s*[\d.]+\s*%)?\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
-    const gross = match(text, [
-      /(?:total\s*due(?:\s*\(incl[^)]*\))?|amount\s*due|gross\s*total|balance\s*due|total\s*\(incl[^)]*\))\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i,
-    ]);
-    const vatNumber = match(text, [/vat\s*(?:reg(?:istration)?\s*)?no\.?\s*[:.]?\s*(IE\s?[0-9A-Z]{7,9})/i]);
-    const po = match(text, [
-      /(?:po\s*(?:number|no|#)?|purchase\s*order(?:\s*(?:number|no))?|your\s*order\s*ref)\s*[:.]?\s*([A-Z]{2}[A-Z0-9\-]{3,})/i,
-    ]);
-
-    // Billed-to entity: read the Bill To line and match it against the
-    // configured legal entities (canonical name wins over the raw string).
-    const billToLine = match(text, [/bill(?:ed)?\s*to\s*[:.]?\s*(.+)/i]);
-    let entity: string | null = null;
-    if (billToLine) {
-      const lower = billToLine.toLowerCase();
-      entity = context.entities.find((e) => lower.includes(e.toLowerCase())) ?? null;
-    }
-
-    const project = findProjectCode(text, context);
-
-    const lineItems: LineItem[] = [];
-    for (const line of lines) {
-      const m = line.match(/^(.{4,60}?)\s{2,}(\d+(?:\.\d+)?)\s{2,}€?([\d,]+\.\d{2})\s{2,}€?([\d,]+\.\d{2})$/);
-      if (m) {
-        lineItems.push({
-          description: m[1].trim(),
-          quantity: Number(m[2]),
-          unit_cents: parseMoneyToCents(m[3]),
-          total_cents: parseMoneyToCents(m[4]),
-        });
-      }
-    }
-
-    // Category heuristic: keyword match on vendor + document text. The learned
-    // rules layer (routing service) overrides this upstream when a rule exists,
-    // so the learning loop behaves identically in mock and Claude modes.
-    let category: string | null = null;
-    let categoryRationale = 'No keyword match (mock heuristic) — pick a category manually.';
-    const haystack = `${vendor ?? ''} ${text.slice(0, 400)}`;
-    for (const [re, cat] of CATEGORY_KEYWORDS) {
-      if (re.test(haystack) && context.categories.some((c) => c.name === cat)) {
-        category = cat;
-        categoryRationale = `Keyword heuristic on the vendor/document text (mock extractor).`;
-        break;
-      }
-    }
-
-    return {
-      doc_type: 'invoice',
-      vendor_name: field(vendor, 'vendor'),
-      invoice_ref: field(ref, 'ref'),
-      invoice_date: field(date, 'date'),
-      due_date: field(dueDate, 'due_date'),
-      net: field(net, 'net'),
-      vat: field(vat, 'vat'),
-      gross: field(gross, 'gross'),
-      vat_rate: field(vatRate, 'vat_rate'),
-      vat_number: field(vatNumber, 'vat_number'),
-      po_number: field(po, 'po'),
-      billed_to_entity: field(entity, 'entity'),
-      project: field(project, 'project'),
-      line_items: lineItems,
-      proposed_category: { name: category, confidence: category ? 0.7 : 0, rationale: categoryRationale },
-      // The mock provider never guesses an approver: routing comes from the
-      // learned rules or the human, which showcases the learning loop.
-      proposed_approver: {
-        email_or_name: null,
-        confidence: 0,
-        rationale: 'Mock extractor does not propose approvers — learned rules or the reviewer decide.',
-      },
-    };
+    return extractFromText(text, context);
   },
 };
+
+/**
+ * Deterministic extraction from a document's text — a PDF text layer, or a
+ * spreadsheet rendered to CSV. Shared so both reach the same fields by the
+ * same patterns.
+ */
+function extractFromText(text: string, context: RulesContext): ExtractionResult {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const vendor = lines[0] ?? null;
+
+  // Statements and remittance advices: classify and stop — the pipeline
+  // auto-files these instead of queueing them for review.
+  const statementLike = classifyStatementLike(text);
+  if (statementLike) {
+    return {
+      doc_type: statementLike,
+      vendor_name: field(vendor, 'vendor'),
+      invoice_ref: emptyField(),
+      invoice_date: emptyField(),
+      due_date: emptyField(),
+      net: emptyField(),
+      vat: emptyField(),
+      gross: emptyField(),
+      vat_rate: emptyField(),
+      vat_number: emptyField(),
+      po_number: emptyField(),
+      billed_to_entity: emptyField(),
+      project: emptyField(),
+      line_items: [],
+      proposed_category: { name: null, confidence: 0, rationale: `Not an invoice (${statementLike}) — no routing.` },
+      proposed_approver: { email_or_name: null, confidence: 0, rationale: 'Not an invoice.' },
+    };
+  }
+
+  // Internal payment recommendations: payable like an invoice, but the
+  // certificate layout needs its own extraction patterns.
+  if (isPaymentRecommendation(text)) {
+    return extractPaymentRecommendation(text, context);
+  }
+
+  const ref = match(text, [
+    /invoice\s*(?:no|number|#)\.?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
+    /our\s*ref\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
+  ]);
+  const date = match(text, [
+    /(?:invoice\s*)?date\s*[:.]?\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
+    /(?:invoice\s*)?date\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
+    /(?:invoice\s*)?date\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
+  ]);
+  // Due date: an explicit "due date" line wins; otherwise derive it from
+  // stated payment terms (e.g. "Net 30" / "Payment terms: 30 days") added to
+  // the invoice date. Kept deterministic so mock runs are repeatable.
+  let dueDate = match(text, [
+    /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i,
+    /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
+    /(?:payment\s*)?due\s*(?:date|by|on)?\s*[:.]?\s*(\d{4}-\d{2}-\d{2})/i,
+  ]);
+  if (!dueDate && date) {
+    const termDays = match(text, [
+      /(?:payment\s*terms|terms)\s*[:.]?\s*(?:net\s*)?(\d{1,3})\s*days?/i,
+      /\bnet\s*(\d{1,3})\b/i,
+      /due\s*(?:in|within)\s*(\d{1,3})\s*days?/i,
+    ]);
+    const base = termDays ? parseInvoiceDate(date) : null;
+    if (base) {
+      const d = new Date(`${base}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + Number(termDays));
+      dueDate = d.toISOString().slice(0, 10);
+    }
+  }
+  const net = match(text, [/(?:net\s*(?:total|amount)?|subtotal)\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
+  const vatRate = match(text, [/vat\s*@\s*([\d.]+)\s*%/i]);
+  const vat = match(text, [/vat(?:\s*@\s*[\d.]+\s*%)?\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i]);
+  const gross = match(text, [
+    /(?:total\s*due(?:\s*\(incl[^)]*\))?|amount\s*due|gross\s*total|balance\s*due|total\s*\(incl[^)]*\))\s*[:.]?\s*€?\s*([\d,]+\.\d{2})/i,
+  ]);
+  const vatNumber = match(text, [/vat\s*(?:reg(?:istration)?\s*)?no\.?\s*[:.]?\s*(IE\s?[0-9A-Z]{7,9})/i]);
+  const po = match(text, [
+    /(?:po\s*(?:number|no|#)?|purchase\s*order(?:\s*(?:number|no))?|your\s*order\s*ref)\s*[:.]?\s*([A-Z]{2}[A-Z0-9\-]{3,})/i,
+  ]);
+
+  // Billed-to entity: read the Bill To line and match it against the
+  // configured legal entities (canonical name wins over the raw string).
+  const billToLine = match(text, [/bill(?:ed)?\s*to\s*[:.]?\s*(.+)/i]);
+  let entity: string | null = null;
+  if (billToLine) {
+    const lower = billToLine.toLowerCase();
+    entity = context.entities.find((e) => lower.includes(e.toLowerCase())) ?? null;
+  }
+
+  const project = findProjectCode(text, context);
+
+  const lineItems: LineItem[] = [];
+  for (const line of lines) {
+    const m = line.match(/^(.{4,60}?)\s{2,}(\d+(?:\.\d+)?)\s{2,}€?([\d,]+\.\d{2})\s{2,}€?([\d,]+\.\d{2})$/);
+    if (m) {
+      lineItems.push({
+        description: m[1].trim(),
+        quantity: Number(m[2]),
+        unit_cents: parseMoneyToCents(m[3]),
+        total_cents: parseMoneyToCents(m[4]),
+      });
+    }
+  }
+
+  // Category heuristic: keyword match on vendor + document text. The learned
+  // rules layer (routing service) overrides this upstream when a rule exists,
+  // so the learning loop behaves identically in mock and Claude modes.
+  let category: string | null = null;
+  let categoryRationale = 'No keyword match (mock heuristic) — pick a category manually.';
+  const haystack = `${vendor ?? ''} ${text.slice(0, 400)}`;
+  for (const [re, cat] of CATEGORY_KEYWORDS) {
+    if (re.test(haystack) && context.categories.some((c) => c.name === cat)) {
+      category = cat;
+      categoryRationale = `Keyword heuristic on the vendor/document text (mock extractor).`;
+      break;
+    }
+  }
+
+  return {
+    doc_type: 'invoice',
+    vendor_name: field(vendor, 'vendor'),
+    invoice_ref: field(ref, 'ref'),
+    invoice_date: field(date, 'date'),
+    due_date: field(dueDate, 'due_date'),
+    net: field(net, 'net'),
+    vat: field(vat, 'vat'),
+    gross: field(gross, 'gross'),
+    vat_rate: field(vatRate, 'vat_rate'),
+    vat_number: field(vatNumber, 'vat_number'),
+    po_number: field(po, 'po'),
+    billed_to_entity: field(entity, 'entity'),
+    project: field(project, 'project'),
+    line_items: lineItems,
+    proposed_category: { name: category, confidence: category ? 0.7 : 0, rationale: categoryRationale },
+    // The mock provider never guesses an approver: routing comes from the
+    // learned rules or the human, which showcases the learning loop.
+    proposed_approver: {
+      email_or_name: null,
+      confidence: 0,
+      rationale: 'Mock extractor does not propose approvers — learned rules or the reviewer decide.',
+    },
+  };
+}

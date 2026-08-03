@@ -1,4 +1,5 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { isTabular, renderTabular } from './tabular.js';
 
 /**
  * Deterministic document steering, anchored to the top of the document
@@ -47,6 +48,16 @@ export function isPaymentRecommendation(text: string): boolean {
  * parse failure means "no override", never an error.
  */
 export async function sniffPaymentRecommendation(buffer: Buffer, mime: string): Promise<boolean> {
+  // Spreadsheets and CSVs are text already, so the same title check applies —
+  // a payment recommendation sent as a workbook must steer like one sent as a
+  // PDF, or it silently loses its payable classification.
+  if (isTabular(mime)) {
+    try {
+      return isPaymentRecommendation(renderTabular(buffer, mime));
+    } catch {
+      return false;
+    }
+  }
   if (mime !== 'application/pdf') return false;
   try {
     // Exact-bounds copy: pdf-parse reads the whole underlying ArrayBuffer, and
