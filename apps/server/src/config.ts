@@ -8,6 +8,16 @@ function env(name: string, fallback = ''): string {
   return v === undefined || v === '' ? fallback : v;
 }
 
+/** Positive number from env; falls back when unset, unparseable or <= 0. */
+function positiveNumEnv(name: string, fallback: number): number {
+  const value = Number(env(name, String(fallback)));
+  if (!Number.isFinite(value) || value <= 0) {
+    console.error(`[config] ${name} must be a positive number — using ${fallback}`);
+    return fallback;
+  }
+  return value;
+}
+
 function jsonEnv<T>(name: string, fallback: T): T {
   const raw = env(name);
   if (!raw) return fallback;
@@ -73,6 +83,11 @@ export const config = {
     // runs for the FIRST time. 0 = only mail arriving after enablement — the
     // safe default when the team has been processing the mailbox manually.
     backfillDays: Number(env('GRAPH_BACKFILL_DAYS', '0')),
+    // Wall-clock cap on a single Graph HTTP call. Without it, undici's ~300s
+    // header timeout applies and one hung call stalls a 60s poll for five
+    // minutes; well under the poll interval means a hung call is retried on the
+    // next tick instead of blocking it.
+    timeoutMs: positiveNumEnv('GRAPH_TIMEOUT_SECONDS', 30) * 1000,
   },
 
   extractionProvider: extractionProvider as 'anthropic' | 'mock',

@@ -125,9 +125,33 @@ export function recordApprovalDecision(
   return true;
 }
 
-/** Poll Graph for decisions on pending approval items (graph provider only). */
+let pollingApprovals = false;
+
+/**
+ * Poll Graph for decisions on pending approval items (graph provider only).
+ *
+ * Guarded against overlapping runs for the same reason as the mail poll: the
+ * timer fires every APPROVALS_POLL_SECONDS whether or not the last poll
+ * finished, and two polls over the same pending set double up Graph calls and
+ * race their `approvals_last_*` writes — a finished poll can clear an error the
+ * still-running one just recorded. The skipped tick loses nothing: the poll
+ * already in flight is walking the same rows.
+ */
 export async function pollGraphApprovals(): Promise<void> {
   if (config.approvalsProvider !== 'graph') return;
+  if (pollingApprovals) {
+    console.warn('[approvals] previous poll still running — skipping this tick');
+    return;
+  }
+  pollingApprovals = true;
+  try {
+    await pollGraphApprovalsOnce();
+  } finally {
+    pollingApprovals = false;
+  }
+}
+
+async function pollGraphApprovalsOnce(): Promise<void> {
   const pending = all(
     `SELECT * FROM approval_requests WHERE provider = 'graph' AND status = 'pending' AND external_id IS NOT NULL`,
   );

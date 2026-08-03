@@ -276,7 +276,33 @@ export async function pollGraphMailbox(): Promise<void> {
   }
 }
 
+let polling = false;
+
+/**
+ * The poll entry point the worker timer drives, guarded against overlapping
+ * runs.
+ *
+ * setInterval fires on a fixed schedule regardless of how long the previous
+ * poll took, so a slow poll (a hung Graph call, a big attachment batch) used to
+ * start a second one on top of it. Two polls read the same watermark, ingest the
+ * same messages and race their `graph_mail_watermark` writes — the loser can
+ * push the watermark *backwards* onto an older message, and every extra poll
+ * piles more concurrent Graph calls onto an already struggling mailbox. Skipping
+ * the tick is the right answer: the next one is only MAIL_POLL_SECONDS away, and
+ * the in-flight poll is already doing the work.
+ */
 export async function pollMail(): Promise<void> {
-  if (config.mailProvider === 'graph') return pollGraphMailbox();
-  return pollMockInbox();
+  if (polling) {
+    console.warn('[ingest] previous mail poll still running — skipping this tick');
+    return;
+  }
+  polling = true;
+  try {
+    // `return await`, not `return`: a bare return hands back the promise and
+    // lets finally clear the flag before the poll has actually finished.
+    if (config.mailProvider === 'graph') return await pollGraphMailbox();
+    return await pollMockInbox();
+  } finally {
+    polling = false;
+  }
 }

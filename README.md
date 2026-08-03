@@ -142,6 +142,10 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
    — it does NOT ingest the mailbox's historical backlog unless you ask for it with
    `GRAPH_BACKFILL_DAYS` (e.g. `7` to pull the last week). Auth failures raise the
    `mailbox_auth_failure` alert immediately — check Settings → Connectors for the last error.
+5. Polls can't stall on a slow mailbox: every Graph call is capped at
+   `GRAPH_TIMEOUT_SECONDS` (default 30 — Node's own default is ~300s, five minutes of dead
+   poller per hung call), and a tick that lands while the previous poll is still running is
+   skipped rather than stacked on top of it (overlapping polls raced the watermark).
 
 ### Wiring up Teams Approvals
 

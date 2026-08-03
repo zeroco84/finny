@@ -57,6 +57,13 @@ export async function runSlaWatchdog(): Promise<void> {
   }
 }
 
+/**
+ * Timers fire on a fixed schedule regardless of how long the previous run took,
+ * so the jobs that reach outside the process are re-entrancy guarded at their
+ * own entry points — `drainExtractionQueue` above, `pollMail` and
+ * `pollGraphApprovals` in their own modules. A tick that lands on a
+ * still-running job is skipped rather than stacked on top of it.
+ */
 export function startWorkers(): void {
   const mailInterval = config.mailProvider === 'mock' ? 3000 : config.mailPollSeconds * 1000;
   setInterval(() => void pollMail().catch((e) => console.error('[worker] mail poll:', e)), mailInterval);
