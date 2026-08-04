@@ -7,7 +7,7 @@ import { getApprover } from '../settings.js';
 import { getInvoiceRow } from '../invoices.js';
 import { GraphAuthError, graphFetch } from '../graph/graphClient.js';
 import { buildAttachmentLink } from '../attachmentLinks.js';
-import { sendApprovalToFlow } from './powerAutomate.js';
+import { approvalCallbackUrl, sendApprovalToFlow } from './powerAutomate.js';
 
 /**
  * Teams Approvals integration. Three providers:
@@ -94,7 +94,7 @@ export async function createApprovalRequest(
         approverName: approver.name,
         approverEmail: approver.email,
         documentUrl,
-        callbackUrl: `${config.appUrl.replace(/\/+$/, '')}/api/integrations/approvals/callback`,
+        callbackUrl: approvalCallbackUrl(),
         // Empty string, never null — see ApprovalFlowRequest. The trigger's
         // schema types every field as String and rejects a null outright.
         vendor: text(row.vendor_name),

@@ -100,6 +100,16 @@ export const config = {
   // Shared secret the flow presents on the decision callback. Without it the
   // callback endpoint stays closed (503) rather than open.
   approvalsCallbackToken: env('APPROVALS_CALLBACK_TOKEN'),
+  // Base URL the approval flow calls back on. Defaults to APP_URL, which is
+  // right until APP_URL is a domain behind a CDN/WAF: Cloudflare answers a
+  // machine-to-machine POST with a managed bot challenge (403 + an HTML
+  // interstitial), so the decision never arrives. Worse, challenges are
+  // reputation-scored, so some callbacks succeed and some don't and invoices
+  // strand at random. Point this at the origin (Render's own URL) to keep the
+  // callback off the edge, while user-facing links stay on APP_URL. The
+  // endpoint is machine-only, bearer-token authenticated and fails shut, so it
+  // gains nothing from bot protection.
+  approvalsCallbackBaseUrl: env('APPROVALS_CALLBACK_BASE_URL'),
   // Demo-only invoice/approval simulator routes; never enabled in production.
   simulatorEnabled,
 
