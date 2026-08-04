@@ -18,6 +18,13 @@ import { isValidWebhookUrl, urlHost } from '../teamsWebhook.js';
  */
 
 export interface ApprovalFlowRequest {
+  /**
+   * Authenticates Finny to the flow. The flow's first action compares this to
+   * its own copy and terminates on a mismatch — the trigger URL's signature is
+   * otherwise the only thing standing between a leaked URL and anyone raising
+   * Teams approvals that genuinely appear to come from Finny.
+   */
+  sharedSecret: string;
   /** Finny's approval_requests.id — echoed back on the callback to correlate. */
   requestId: string;
   invoiceId: string;
@@ -27,7 +34,13 @@ export interface ApprovalFlowRequest {
   approverEmail: string;
   /** Revocable, scoped, TTL-capped link letting the approver see the document. */
   documentUrl: string;
-  /** Where the flow posts the decision — so the flow author hardcodes nothing. */
+  /**
+   * DEPRECATED — the flow must hardcode its callback URL instead of reading
+   * this. Using an attacker-controllable value as the destination for a request
+   * that carries APPROVALS_CALLBACK_TOKEN lets anyone who can trigger the flow
+   * redirect that token to a server of their choosing. Still sent so an
+   * existing flow keeps working while it is updated; ignore it.
+   */
   callbackUrl: string;
   // Never null. The flow's trigger validates the body against a JSON Schema
   // generated from a sample payload, which types every field as String — a null

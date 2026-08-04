@@ -408,6 +408,8 @@ export interface ConnectorStatus {
   approvals_flow_host: string | null;
   /** Whether the flow's decision-callback token is set — without it the flow cannot report back. */
   approvals_callback_ready: boolean;
+  /** Whether the shared secret authenticating Finny to the flow is set. */
+  approvals_flow_secret_set: boolean;
   /** How failure alerts are delivered: 'webhook' (Teams) or 'off'. */
   alerts_channel: string;
   /** Host of the configured webhook (never the secret token), or null. */

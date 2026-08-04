@@ -13,6 +13,7 @@ const saved = {
   provider: config.approvalsProvider,
   flow: config.approvalsFlowUrl,
   token: config.approvalsCallbackToken,
+  flowSecret: config.approvalsFlowSecret,
   callbackBase: config.approvalsCallbackBaseUrl,
   appUrl: config.appUrl,
 };
@@ -41,6 +42,7 @@ beforeEach(() => {
   config.approvalsCallbackToken = 'callback-secret-token';
   config.appUrl = 'https://finny.example.com';
   config.approvalsCallbackBaseUrl = '';
+  config.approvalsFlowSecret = 'flow-secret';
 });
 
 afterEach(() => {
@@ -49,6 +51,7 @@ afterEach(() => {
     approvalsFlowUrl: saved.flow,
     approvalsCallbackToken: saved.token,
     approvalsCallbackBaseUrl: saved.callbackBase,
+    approvalsFlowSecret: saved.flowSecret,
     appUrl: saved.appUrl,
   });
   vi.unstubAllGlobals();
@@ -56,7 +59,7 @@ afterEach(() => {
 
 describe('sendApprovalToFlow', () => {
   const request = {
-    requestId: 'req-1', invoiceId: 'inv-1', title: 'Invoice', description: 'd',
+    sharedSecret: 'flow-secret', requestId: 'req-1', invoiceId: 'inv-1', title: 'Invoice', description: 'd',
     approverName: 'Dana Reid', approverEmail: 'dana@example.test',
     documentUrl: 'https://finny.example.com/a/tok', callbackUrl: 'https://finny.example.com/api/integrations/approvals/callback',
     vendor: 'Meadowvale Ltd', invoiceRef: 'INV-77', amount: '1107.00', category: 'Materials', poNumber: 'PO-9',
@@ -112,6 +115,34 @@ describe('sendApprovalToFlow', () => {
   it('tolerates a trailing slash on the override', () => {
     config.approvalsCallbackBaseUrl = 'https://finny-sb2j.onrender.com/';
     expect(approvalCallbackUrl()).not.toContain('//api/');
+  });
+
+  it('sends the shared secret so the flow can authenticate the caller', async () => {
+    // The trigger URL's signature is otherwise the only access control, and a
+    // signature embedded in a URL leaks into env vars, exports and chat logs.
+    const fetchMock = vi.fn(async (_url: string, _opts: RequestInit) => new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { invoiceId, approverId } = seedInvoiceAndApprover();
+
+    await createApprovalRequest(invoiceId, approverId, 'rick@example.test');
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as Record<string, unknown>;
+    expect(body.sharedSecret).toBe('flow-secret');
+  });
+
+  it('sends an empty secret, never null, when unconfigured', async () => {
+    // Null would be rejected by the trigger's schema outright — the same trap
+    // that silently stopped every approval once before.
+    const fetchMock = vi.fn(async (_url: string, _opts: RequestInit) => new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    config.approvalsFlowSecret = '';
+    const { invoiceId, approverId } = seedInvoiceAndApprover();
+
+    await createApprovalRequest(invoiceId, approverId, 'rick@example.test');
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as Record<string, unknown>;
+    expect(body.sharedSecret).toBe('');
+    expect(body.sharedSecret).not.toBeNull();
   });
 
   it('reports the flow host but never the signed url', () => {
