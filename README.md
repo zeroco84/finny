@@ -194,17 +194,40 @@ if your designer doesn't offer it there, start blank and add the trigger directl
 | `APPROVALS_CALLBACK_TOKEN` | a long random string, also set as the `Authorization: Bearer` header in the flow's HTTP step |
 | `APPROVALS_CALLBACK_BASE_URL` | only when `APP_URL` is behind a CDN/WAF — see below |
 
-> ⚠️ **If `APP_URL` is a custom domain behind Cloudflare (or any WAF), set
-> `APPROVALS_CALLBACK_BASE_URL` to the origin** (the `.onrender.com` URL). Cloudflare answers the
-> flow's machine-to-machine POST with a **managed bot challenge** — HTTP 403 and a "Just a
-> moment…" HTML page — so the decision never reaches Finny and the invoice strands in
-> `awaiting_approval`. Managed challenges are reputation-scored, so *some* callbacks succeed and
-> others don't: the symptom is intermittent, not a clean failure. The endpoint is machine-only,
-> bearer-token authenticated and fails shut, so it gains nothing from bot protection. The
-> alternative is a WAF rule that skips bot protection for
-> `/api/integrations/approvals/callback`; this variable exists so you don't have to depend on that
-> rule staying in place. Approver *document* links stay on `APP_URL` — those are opened by a human,
-> who can pass a challenge.
+> ⚠️ **If `APP_URL` is behind Cloudflare (or any WAF), exempt the callback path.** The flow's
+> POST is machine-to-machine, so bot protection answers it with a **managed challenge** — HTTP 403
+> and a "Just a moment…" HTML page — and the decision never reaches Finny: the invoice strands in
+> `awaiting_approval` while Teams shows the approval complete. Managed challenges are
+> reputation-scored, so *some* callbacks get through and others don't; the symptom is intermittent
+> rather than a clean failure, and nothing is logged in Finny because no request arrives.
+>
+> The fix is a WAF rule scoped to that one path. In Cloudflare, **Security → WAF → Custom rules**,
+> action **Skip**:
+>
+> ```
+> (http.host eq "<your-domain>" and http.request.uri.path eq "/api/integrations/approvals/callback"
+>  and http.request.method eq "POST")
+> ```
+>
+> Skip Super Bot Fight Mode, Browser Integrity Check, Security Level and Managed Rules — check
+> **Security → Events** filtered to that path to see which one is actually challenging you. On
+> Cloudflare's *Free* plan, plain Bot Fight Mode is zone-wide and is **not** reliably skippable by a
+> custom rule; it has to be turned off or the plan upgraded. Verify with a deliberately bad token:
+> `403` means still challenged, `401 {"error":"Invalid or missing bearer token"}` means the request
+> is reaching Finny.
+>
+> Narrowing the rule to that exact path and method leaves the rest of the zone protected, and the
+> endpoint's real authentication is unchanged — a bearer token, timing-safe compared, failing shut
+> when unset. Approver *document* links stay on `APP_URL` and keep full protection: a human opening
+> one can pass a challenge.
+>
+> `APPROVALS_CALLBACK_BASE_URL` is the fallback where the WAF can't be changed — point it at the
+> origin so the callback skips the edge entirely. Prefer the WAF rule: an origin URL is not a
+> stable contract (a recreated Render service gets a new one), whereas the custom domain is.
+>
+> **Other machine endpoints on the same domain need the same treatment** — notably
+> `/api/integrations/blockdocs/invoices`, which is also bearer-token, machine-to-machine, and will
+> be challenged the same way. Its symptom is silent gaps in the cost dashboard rather than an error.
 
 Settings → **Connectors** shows the flow host and flags either variable being unset.
 
