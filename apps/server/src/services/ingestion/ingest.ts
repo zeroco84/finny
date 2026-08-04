@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../../config.js';
-import { TABULAR_MIME_BY_EXT } from '../extraction/tabular.js';
+import { CONVERTIBLE_MIME_BY_EXT } from '../extraction/convert.js';
 import { newId } from '../../domain/util.js';
 import { createInvoice } from '../invoices.js';
 import { audit } from '../audit.js';
@@ -22,12 +22,12 @@ const MIME_BY_EXT: Record<string, string> = {
   // PNG, JPEG, GIF and WebP, so accepting them here would move the failure
   // from ingest to extraction rather than remove it. They need server-side
   // transcoding first.
-  ...TABULAR_MIME_BY_EXT,
+  ...CONVERTIBLE_MIME_BY_EXT,
 };
 
 /** For the operator-facing message on an attachment Finny cannot read. */
 const SUPPORTED_LABEL =
-  'PDF, images (PNG, JPG, GIF, WebP), spreadsheets (XLSX, XLS, ODS) and text (CSV, TSV, TXT)';
+  'PDF, images (PNG, JPG, GIF, WebP), spreadsheets (XLSX, XLS, ODS), documents (DOCX, ODT) and text (CSV, TSV, TXT)';
 
 export interface IngestMeta {
   source: string;

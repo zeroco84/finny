@@ -16,6 +16,7 @@
     "@finny/shared": "*",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
+    "fflate": "^0.8.3",
     "openid-client": "^6.8.4",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.0",
