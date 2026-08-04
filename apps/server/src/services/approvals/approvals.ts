@@ -86,6 +86,9 @@ export async function createApprovalRequest(
       // Correlation is on Finny's own requestId, echoed on the callback —
       // deliberately not on an upstream id we would have to parse and trust.
       await sendApprovalToFlow({
+        // Empty string rather than undefined when unset: the trigger's schema
+        // types every field as String and rejects anything else outright.
+        sharedSecret: config.approvalsFlowSecret,
         requestId,
         invoiceId,
         title,

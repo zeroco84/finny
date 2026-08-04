@@ -973,6 +973,9 @@ export default function SettingsPage() {
                           {status.approvals_flow_host && !status.approvals_callback_ready && (
                             <span className="form-error"> · APPROVALS_CALLBACK_TOKEN is not set — the flow cannot report decisions back</span>
                           )}
+                          {status.approvals_flow_host && !status.approvals_flow_secret_set && (
+                            <span className="form-error"> · APPROVALS_FLOW_SECRET is not set — anyone with the flow URL can raise approvals as Finny</span>
+                          )}
                         </>
                       : status.approvals_provider === 'graph'
                         ? <span className="form-error">the Graph Approvals API is delegated-only and always returns 401 — use power_automate</span>

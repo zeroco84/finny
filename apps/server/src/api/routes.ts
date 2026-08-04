@@ -283,6 +283,7 @@ export function buildRouter(): Router {
       approvals_provider: config.approvalsProvider,
       approvals_flow_host: approvalsFlowInfo().host,
       approvals_callback_ready: Boolean(config.approvalsCallbackToken),
+      approvals_flow_secret_set: Boolean(config.approvalsFlowSecret),
       alerts_channel: alertsChannelName(),
       alert_webhook_host: webhookInfo().host,
       auth_provider: config.authProvider,

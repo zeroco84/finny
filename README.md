@@ -172,9 +172,10 @@ if your designer doesn't offer it there, start blank and add the trigger directl
 
 | Step | Action | Notes |
 | --- | --- | --- |
-| Trigger | *When an HTTP request is received* | Method `POST`. Copy the generated URL into `APPROVALS_FLOW_URL`. The URL only exists after you save the flow once. |
-| 1 | *Start and wait for an approval* | Type **Approve/Reject – First to respond**. Title `@{triggerBody()?['title']}`, Assigned to `@{triggerBody()?['approverEmail']}`, Details including `@{triggerBody()?['documentUrl']}`. |
-| 2 | *HTTP* | `POST` to `@{triggerBody()?['callbackUrl']}`, header `Authorization: Bearer <APPROVALS_CALLBACK_TOKEN>`, body below. |
+| Trigger | *When an HTTP request is received* | Method `POST`, **Who can trigger the flow: `Anyone`** (Finny calls server-to-server with no user token; any other setting returns 401). Copy the generated URL into `APPROVALS_FLOW_URL` — it only exists after you save once. |
+| 0 | *Condition* → **terminate unless the secret matches** | `triggerBody()?['sharedSecret']` **is equal to** your `APPROVALS_FLOW_SECRET`. Put a **Terminate** (status `Cancelled`) in the *False* branch and everything else in *True*. See the security note below — without this, the URL alone is enough to raise approvals as Finny. |
+| 1 | *Start and wait for an approval* | Type **Approve/Reject – First to respond**. Title `@{triggerBody()?['title']}`, Assigned to `@{triggerBody()?['approverEmail']}`, Details `@{triggerBody()?['description']}`. Under **Advanced parameters → Show all**: **Item link** = `@{triggerBody()?['documentUrl']}`, **Item link description** = `View invoice document`. |
+| 2 | *HTTP* | `POST` to the callback URL **hardcoded as a literal** — never `@{triggerBody()?['callbackUrl']}`. Header `Authorization: Bearer <APPROVALS_CALLBACK_TOKEN>`, body below. Reading the URI from the payload lets anyone who can trigger the flow redirect that token to a server of their choosing. |
 
 ```json
 {
@@ -192,6 +193,7 @@ if your designer doesn't offer it there, start blank and add the trigger directl
 | `APPROVALS_PROVIDER` | `power_automate` |
 | `APPROVALS_FLOW_URL` | the flow's HTTP trigger URL (contains a `sig=` signature — treated as a secret: never logged, never returned to a client, only posted to an allowlisted Microsoft host) |
 | `APPROVALS_CALLBACK_TOKEN` | a long random string, also set as the `Authorization: Bearer` header in the flow's HTTP step |
+| `APPROVALS_FLOW_SECRET` | a long random string, also hardcoded in the flow's step-0 Condition — see the security note below |
 | `APPROVALS_CALLBACK_BASE_URL` | only when `APP_URL` is behind a CDN/WAF — see below |
 
 > ⚠️ **If `APP_URL` is behind Cloudflare (or any WAF), exempt the callback path.** The flow's
@@ -230,6 +232,26 @@ if your designer doesn't offer it there, start blank and add the trigger directl
 > be challenged the same way. Its symptom is silent gaps in the cost dashboard rather than an error.
 
 Settings → **Connectors** shows the flow host and flags either variable being unset.
+
+> ⚠️ **The trigger URL is a credential, and on its own it is not enough.** `Who can trigger the
+> flow` must be `Anyone` for Finny to call it server-to-server, so the signature in the URL is the
+> only thing gating it — and a signature embedded in a URL leaks easily, into environment
+> variables, flow exports, screenshots and chat logs. Anyone holding it can raise Teams Approvals
+> that are **genuinely from Finny**, with an attacker-chosen title, assignee and document link:
+> a phishing card arriving through the one channel AP staff are trained to trust, bypassing mail
+> filtering entirely because it is not mail.
+>
+> Two cheap mitigations, both assumed by the steps above:
+>
+> 1. **Gate the flow on `APPROVALS_FLOW_SECRET`** (step 0). Finny sends it in every request; the
+>    flow terminates when it does not match. A leaked URL alone then achieves nothing.
+> 2. **Hardcode the callback URI** in the HTTP step. Reading it from `triggerBody()?['callbackUrl']`
+>    makes an attacker-controlled value the destination for a request carrying
+>    `APPROVALS_CALLBACK_TOKEN` — so anyone who can trigger the flow can have that token posted to
+>    a server of their choosing, and then approve any invoice in Finny directly. Finny still sends
+>    `callbackUrl` so existing flows keep working, but it must be ignored.
+>
+> Rotate both secrets if the trigger URL is ever pasted somewhere it should not have been.
 
 **Tenant prerequisites.** Approvals are stored in Microsoft Dataverse. In the **default**
 environment it is provisioned automatically; in any **other** environment the person who runs the

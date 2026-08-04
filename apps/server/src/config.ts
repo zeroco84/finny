@@ -100,6 +100,16 @@ export const config = {
   // Shared secret the flow presents on the decision callback. Without it the
   // callback endpoint stays closed (503) rather than open.
   approvalsCallbackToken: env('APPROVALS_CALLBACK_TOKEN'),
+  // Secret sent in the body of every request to the flow, for the flow to check
+  // before it does anything. The flow's HTTP trigger is reachable by anyone
+  // holding its URL — the signature in that URL is its only access control, and
+  // a signature embedded in a URL leaks easily: into env vars, flow exports,
+  // screenshots and chat logs. Without a gate, anyone who obtains the URL can
+  // raise Teams approvals that are genuinely from Finny, with an attacker-chosen
+  // title, assignee and document link — a phishing card delivered through the
+  // one channel AP staff are trained to trust. The flow terminates when this
+  // does not match, so a leaked URL alone achieves nothing.
+  approvalsFlowSecret: env('APPROVALS_FLOW_SECRET'),
   // Base URL the approval flow calls back on. Defaults to APP_URL, which is
   // right until APP_URL is a domain behind a CDN/WAF: Cloudflare answers a
   // machine-to-machine POST with a managed bot challenge (403 + an HTML
