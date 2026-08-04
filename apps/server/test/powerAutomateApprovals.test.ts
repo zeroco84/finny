@@ -5,7 +5,7 @@ import { config } from '../src/config.js';
 import { all, closeDb, one, openDb, run } from '../src/db/db.js';
 import { seedDefaults } from '../src/services/settings.js';
 import { createApprovalRequest } from '../src/services/approvals/approvals.js';
-import { sendApprovalToFlow, approvalsFlowInfo } from '../src/services/approvals/powerAutomate.js';
+import { approvalCallbackUrl, approvalsFlowInfo, sendApprovalToFlow } from '../src/services/approvals/powerAutomate.js';
 import { buildRouter } from '../src/api/routes.js';
 
 const FLOW_URL = 'https://prod-12.westeurope.logic.azure.com/workflows/abc/triggers/manual/paths/invoke?sig=SECRET';
@@ -13,6 +13,7 @@ const saved = {
   provider: config.approvalsProvider,
   flow: config.approvalsFlowUrl,
   token: config.approvalsCallbackToken,
+  callbackBase: config.approvalsCallbackBaseUrl,
   appUrl: config.appUrl,
 };
 
@@ -39,6 +40,7 @@ beforeEach(() => {
   config.approvalsFlowUrl = FLOW_URL;
   config.approvalsCallbackToken = 'callback-secret-token';
   config.appUrl = 'https://finny.example.com';
+  config.approvalsCallbackBaseUrl = '';
 });
 
 afterEach(() => {
@@ -46,6 +48,7 @@ afterEach(() => {
     approvalsProvider: saved.provider,
     approvalsFlowUrl: saved.flow,
     approvalsCallbackToken: saved.token,
+    approvalsCallbackBaseUrl: saved.callbackBase,
     appUrl: saved.appUrl,
   });
   vi.unstubAllGlobals();
@@ -91,6 +94,24 @@ describe('sendApprovalToFlow', () => {
   it('never leaks the upstream body into the thrown error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('internal detail: db=prod-7', { status: 500 })));
     await expect(sendApprovalToFlow(request)).rejects.toThrow(/^Approval flow returned HTTP 500$/);
+  });
+
+  it('calls back on APP_URL by default', () => {
+    expect(approvalCallbackUrl()).toBe('https://finny.example.com/api/integrations/approvals/callback');
+  });
+
+  it('calls back on the origin when APP_URL sits behind a challenging CDN', () => {
+    // A managed bot challenge answers a machine POST with 403 + HTML, so the
+    // decision never lands and the invoice strands in awaiting_approval.
+    config.approvalsCallbackBaseUrl = 'https://finny-sb2j.onrender.com';
+    expect(approvalCallbackUrl()).toBe(
+      'https://finny-sb2j.onrender.com/api/integrations/approvals/callback',
+    );
+  });
+
+  it('tolerates a trailing slash on the override', () => {
+    config.approvalsCallbackBaseUrl = 'https://finny-sb2j.onrender.com/';
+    expect(approvalCallbackUrl()).not.toContain('//api/');
   });
 
   it('reports the flow host but never the signed url', () => {

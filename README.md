@@ -192,6 +192,19 @@ if your designer doesn't offer it there, start blank and add the trigger directl
 | `APPROVALS_PROVIDER` | `power_automate` |
 | `APPROVALS_FLOW_URL` | the flow's HTTP trigger URL (contains a `sig=` signature — treated as a secret: never logged, never returned to a client, only posted to an allowlisted Microsoft host) |
 | `APPROVALS_CALLBACK_TOKEN` | a long random string, also set as the `Authorization: Bearer` header in the flow's HTTP step |
+| `APPROVALS_CALLBACK_BASE_URL` | only when `APP_URL` is behind a CDN/WAF — see below |
+
+> ⚠️ **If `APP_URL` is a custom domain behind Cloudflare (or any WAF), set
+> `APPROVALS_CALLBACK_BASE_URL` to the origin** (the `.onrender.com` URL). Cloudflare answers the
+> flow's machine-to-machine POST with a **managed bot challenge** — HTTP 403 and a "Just a
+> moment…" HTML page — so the decision never reaches Finny and the invoice strands in
+> `awaiting_approval`. Managed challenges are reputation-scored, so *some* callbacks succeed and
+> others don't: the symptom is intermittent, not a clean failure. The endpoint is machine-only,
+> bearer-token authenticated and fails shut, so it gains nothing from bot protection. The
+> alternative is a WAF rule that skips bot protection for
+> `/api/integrations/approvals/callback`; this variable exists so you don't have to depend on that
+> rule staying in place. Approver *document* links stay on `APP_URL` — those are opened by a human,
+> who can pass a challenge.
 
 Settings → **Connectors** shows the flow host and flags either variable being unset.
 

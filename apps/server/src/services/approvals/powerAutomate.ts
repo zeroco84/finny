@@ -46,6 +46,18 @@ export function approvalsFlowConfigured(): boolean {
   return Boolean(config.approvalsFlowUrl);
 }
 
+/**
+ * Where the flow posts the decision. APP_URL by default; override with
+ * APPROVALS_CALLBACK_BASE_URL when APP_URL sits behind a CDN/WAF that
+ * challenges machine callers — see config.ts. Trailing slashes are stripped so
+ * the operator can paste either form without producing a double slash that a
+ * strict router would 404.
+ */
+export function approvalCallbackUrl(): string {
+  const base = (config.approvalsCallbackBaseUrl || config.appUrl).replace(/\/+$/, '');
+  return `${base}/api/integrations/approvals/callback`;
+}
+
 /** Host of the configured flow — for the UI. Never the signed URL itself. */
 export function approvalsFlowInfo(): { configured: boolean; host: string | null } {
   const url = config.approvalsFlowUrl;
