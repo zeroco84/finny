@@ -33,6 +33,11 @@ interface GraphApprovalItem {
   completedDateTime?: string;
 }
 
+/** A nullable DB column as the plain string the approval flow requires. */
+function text(value: unknown): string {
+  return value === null || value === undefined ? '' : String(value);
+}
+
 export async function createApprovalRequest(
   invoiceId: string,
   approverId: string,
@@ -90,11 +95,13 @@ export async function createApprovalRequest(
         approverEmail: approver.email,
         documentUrl,
         callbackUrl: `${config.appUrl.replace(/\/+$/, '')}/api/integrations/approvals/callback`,
-        vendor: row.vendor_name === null ? null : String(row.vendor_name),
-        invoiceRef: row.invoice_ref === null ? null : String(row.invoice_ref),
-        amount: centsToDecimal(row.gross_cents === null ? null : Number(row.gross_cents)),
-        category: row.category === null ? null : String(row.category),
-        poNumber: row.po_number === null ? null : String(row.po_number),
+        // Empty string, never null — see ApprovalFlowRequest. The trigger's
+        // schema types every field as String and rejects a null outright.
+        vendor: text(row.vendor_name),
+        invoiceRef: text(row.invoice_ref),
+        amount: centsToDecimal(row.gross_cents === null ? null : Number(row.gross_cents)) ?? '',
+        category: text(row.category),
+        poNumber: text(row.po_number),
       });
     } else if (config.approvalsProvider === 'graph') {
       const item = await graphFetch<GraphApprovalItem>('/solutions/approval/approvalItems', {

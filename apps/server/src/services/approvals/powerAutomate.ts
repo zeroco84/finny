@@ -29,11 +29,17 @@ export interface ApprovalFlowRequest {
   documentUrl: string;
   /** Where the flow posts the decision — so the flow author hardcodes nothing. */
   callbackUrl: string;
-  vendor: string | null;
-  invoiceRef: string | null;
-  amount: string | null;
-  category: string | null;
-  poNumber: string | null;
+  // Never null. The flow's trigger validates the body against a JSON Schema
+  // generated from a sample payload, which types every field as String — a null
+  // is rejected outright with TriggerInputSchemaMismatch and no approval is
+  // raised. Most invoices legitimately lack a PO or project, so nulls here
+  // would fail approvals for the majority of invoices, not a rare few. An
+  // absent value is an empty string, which the flow renders as blank anyway.
+  vendor: string;
+  invoiceRef: string;
+  amount: string;
+  category: string;
+  poNumber: string;
 }
 
 export function approvalsFlowConfigured(): boolean {
