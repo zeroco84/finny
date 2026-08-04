@@ -117,6 +117,40 @@ describe('createApprovalRequest via power_automate', () => {
       .toBe('awaiting_approval');
   });
 
+  it('never sends a null field, whatever the invoice is missing', async () => {
+    // The trigger validates the body against a schema generated from a sample,
+    // which types every field as String: one null is rejected outright with
+    // TriggerInputSchemaMismatch and no approval is raised. Most invoices have
+    // no PO and no project, so this is the common case, not an edge case.
+    const fetchMock = vi.fn(async (_url: string, _opts: RequestInit) => new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const now = new Date('2026-08-04T09:00:00Z').toISOString();
+    run(
+      `INSERT INTO invoices (id, source, attachment_name, attachment_mime, attachment_path, attachment_size,
+         status, vendor_name, invoice_ref, gross_cents, category, po_number, received_at, created_at, updated_at)
+       VALUES ('inv-bare','test','a.pdf','application/pdf','/tmp/a.pdf',10,'confirmed',NULL,NULL,NULL,NULL,NULL,?,?,?)`,
+      now, now, now,
+    );
+    run(
+      `INSERT INTO approvers (id, name, email, teams_user_id, active) VALUES ('app-2','Dana Reid','dana@example.test','aad-2',1)`,
+    );
+
+    await createApprovalRequest('inv-bare', 'app-2', 'rick@example.test');
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(body)) {
+      expect(value, `${key} must not be null`).not.toBeNull();
+      expect(typeof value, `${key} must be a string`).toBe('string');
+    }
+    // The invoice is still identifiable even with every optional field empty.
+    expect(body.requestId).toBeTruthy();
+    expect(body.callbackUrl).toBeTruthy();
+    expect(body.documentUrl).toBeTruthy();
+    expect(one<{ status: string }>("SELECT status FROM approval_requests WHERE invoice_id = 'inv-bare'")!.status)
+      .toBe('pending');
+  });
+
   it('records a failure and alerts when the flow rejects the request', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 403 })));
     const { invoiceId, approverId } = seedInvoiceAndApprover();
