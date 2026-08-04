@@ -83,8 +83,23 @@ export const config = {
   // Default model when the AP Lead hasn't picked one in Settings.
   extractionModel: env('EXTRACTION_MODEL', 'claude-opus-4-8'),
 
-  approvalsProvider: env('APPROVALS_PROVIDER', 'mock') as 'mock' | 'graph',
+  // 'mock'           = in-app simulator panel (demo/dev).
+  // 'power_automate' = POST to an HTTP-triggered Power Automate flow running
+  //                    "Start and wait for an approval"; the flow calls back
+  //                    with the decision. The supported production path.
+  // 'graph'          = the beta Graph Approvals API. Kept for reference only:
+  //                    that endpoint supports DELEGATED permissions exclusively,
+  //                    so Finny's client-credentials token can never carry the
+  //                    required scope and every create returns 401. See README.
+  approvalsProvider: env('APPROVALS_PROVIDER', 'mock') as 'mock' | 'graph' | 'power_automate',
   approvalsPollSeconds: Number(env('APPROVALS_POLL_SECONDS', '60')),
+  // HTTP-trigger URL of the Power Automate approval flow. Carries a signature
+  // in its query string, so it is treated like the alert webhook: never logged,
+  // never returned to a client, and only ever posted to an allowlisted host.
+  approvalsFlowUrl: env('APPROVALS_FLOW_URL'),
+  // Shared secret the flow presents on the decision callback. Without it the
+  // callback endpoint stays closed (503) rather than open.
+  approvalsCallbackToken: env('APPROVALS_CALLBACK_TOKEN'),
   // Demo-only invoice/approval simulator routes; never enabled in production.
   simulatorEnabled,
 

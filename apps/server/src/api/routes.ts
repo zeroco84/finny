@@ -19,7 +19,7 @@ import {
   toDetail,
 } from '../services/invoices.js';
 import { entraCallback, entraLogin } from './entra.js';
-import { requireBlockDocsToken } from './integrationAuth.js';
+import { requireApprovalCallbackToken, requireBlockDocsToken } from './integrationAuth.js';
 import { ReviewError, retryApproval, submitReview } from '../services/review.js';
 import { resetForRetry } from '../services/extraction/pipeline.js';
 import { drainExtractionQueue } from '../workers.js';
@@ -83,6 +83,7 @@ import { audit, auditFilterOptions, auditLogCsv, listAuditLog } from '../service
 import { ingestAttachment } from '../services/ingestion/ingest.js';
 import { simulateIncomingInvoice } from '../services/simulator/simulator.js';
 import { recordApprovalDecision } from '../services/approvals/approvals.js';
+import { approvalsFlowInfo } from '../services/approvals/powerAutomate.js';
 import { redeemAttachmentToken, revokeAttachmentLinks } from '../services/attachmentLinks.js';
 import { latestApproval, toSummary } from '../services/invoices.js';
 
@@ -214,6 +215,40 @@ export function buildRouter(): Router {
     res.json(listApprovedForBlockDocs(projectCode, since));
   });
 
+  // ── Power Automate approval decision callback (bearer token, no session) ──
+  // The approval flow POSTs the manager's decision here when "Start and wait
+  // for an approval" completes. Correlation is on Finny's own request id, so
+  // nothing depends on parsing or trusting an upstream identifier.
+  const approvalCallbackSchema = z.object({
+    requestId: z.string().min(1).max(60),
+    decision: z.enum(['approved', 'rejected']),
+    decidedBy: z.string().max(200).optional(),
+    note: z.string().max(2000).optional(),
+  });
+  router.post('/integrations/approvals/callback', requireApprovalCallbackToken, (req, res) => {
+    const parsed = approvalCallbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Expected { requestId, decision: approved|rejected }' });
+      return;
+    }
+    const { requestId, decision, decidedBy, note } = parsed.data;
+    // recordApprovalDecision no-ops unless the request is still pending, so a
+    // flow that retries its callback cannot double-apply or reopen a decision.
+    const applied = recordApprovalDecision(
+      requestId,
+      decision,
+      decidedBy?.trim() || 'Teams Approvals',
+      note?.trim() || null,
+    );
+    if (!applied) {
+      // 200, not 404: the flow has delivered successfully and must not retry.
+      // Unknown or already-decided are both "nothing left to do".
+      res.json({ ok: true, applied: false });
+      return;
+    }
+    res.json({ ok: true, applied: true });
+  });
+
   // Everything below requires a session.
   router.use(requireAuth);
 
@@ -246,6 +281,8 @@ export function buildRouter(): Router {
       anthropic_key_set: key.set,
       anthropic_key_source: key.source,
       approvals_provider: config.approvalsProvider,
+      approvals_flow_host: approvalsFlowInfo().host,
+      approvals_callback_ready: Boolean(config.approvalsCallbackToken),
       alerts_channel: alertsChannelName(),
       alert_webhook_host: webhookInfo().host,
       auth_provider: config.authProvider,
