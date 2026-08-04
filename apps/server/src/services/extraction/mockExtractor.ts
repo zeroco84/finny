@@ -11,7 +11,7 @@ import {
 } from './extractor.js';
 import { parseInvoiceDate, parseMoneyToCents } from '../../domain/util.js';
 import { classifyStatementLike, isPaymentRecommendation } from './docSteering.js';
-import { isTabular, renderTabular } from './tabular.js';
+import { convertToText, isConvertibleToText } from './convert.js';
 
 /**
  * Offline extractor: parses the PDF text layer with deterministic patterns.
@@ -144,7 +144,7 @@ export const mockExtractor: Extractor = {
   name: 'mock',
 
   async extract(buffer: Buffer, mime: string, context: RulesContext): Promise<ExtractionResult> {
-    if (mime !== 'application/pdf' && !isTabular(mime)) {
+    if (mime !== 'application/pdf' && !isConvertibleToText(mime)) {
       // Images: no OCR in the mock provider — flag everything for the human.
       return {
         doc_type: 'invoice',
@@ -172,8 +172,8 @@ export const mockExtractor: Extractor = {
 
     // Spreadsheets and CSVs already are text — render the cells and run them
     // through the same deterministic patterns as a PDF's text layer.
-    if (isTabular(mime)) {
-      return extractFromText(renderTabular(buffer, mime), context);
+    if (isConvertibleToText(mime)) {
+      return extractFromText(convertToText(buffer, mime), context);
     }
 
     // pdf-parse's bundled (old) pdf.js reads the WHOLE underlying ArrayBuffer,

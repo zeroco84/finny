@@ -1,5 +1,5 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
-import { isTabular, renderTabular } from './tabular.js';
+import { convertToText, isConvertibleToText } from './convert.js';
 
 /**
  * Deterministic document steering, anchored to the top of the document
@@ -51,9 +51,9 @@ export async function sniffPaymentRecommendation(buffer: Buffer, mime: string): 
   // Spreadsheets and CSVs are text already, so the same title check applies —
   // a payment recommendation sent as a workbook must steer like one sent as a
   // PDF, or it silently loses its payable classification.
-  if (isTabular(mime)) {
+  if (isConvertibleToText(mime)) {
     try {
-      return isPaymentRecommendation(renderTabular(buffer, mime));
+      return isPaymentRecommendation(convertToText(buffer, mime));
     } catch {
       return false;
     }

@@ -55,7 +55,7 @@ approvals, and one open unreadable-attachment alert. Re-seed anytime with `npm r
 
 You can also ingest real invoices with zero setup: drop PDFs (or PNG/JPG/GIF/WebP photos —
 with Claude extraction these are read by vision exactly like PDFs; images over 5MB are parked
-with an actionable alert — or XLSX/XLS/ODS workbooks and CSV/TSV/TXT files, which are converted
+with an actionable alert — or XLSX/XLS/ODS workbooks, DOCX/ODT documents and CSV/TSV/TXT files, which are converted
 to text before extraction) into `apps/server/data/inbox/`
 (the watched folder standing in for the mailbox) or use **Upload invoice** on the queue.
 
