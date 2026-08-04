@@ -7,14 +7,23 @@ import { getApprover } from '../settings.js';
 import { getInvoiceRow } from '../invoices.js';
 import { GraphAuthError, graphFetch } from '../graph/graphClient.js';
 import { buildAttachmentLink } from '../attachmentLinks.js';
+import { sendApprovalToFlow } from './powerAutomate.js';
 
 /**
- * Teams Approvals integration. Two providers:
- *  - mock : records the request locally; the UI's approvals simulator plays
- *           the manager and drives the same decision path as Graph would.
- *  - graph: creates an Approvals item via the Microsoft Graph *beta* endpoint
- *           and polls it for the decision. The beta contract should be
- *           verified against current Graph docs before go-live (see README).
+ * Teams Approvals integration. Three providers:
+ *  - mock          : records the request locally; the UI's approvals simulator
+ *                    plays the manager and drives the same decision path.
+ *  - power_automate: POSTs to an HTTP-triggered Power Automate flow running
+ *                    "Start and wait for an approval"; the flow POSTs the
+ *                    decision back. The supported production path — see
+ *                    powerAutomate.ts.
+ *  - graph         : the beta Graph Approvals API. DOES NOT WORK and cannot be
+ *                    made to: that endpoint supports delegated permissions
+ *                    exclusively ("Application: Not supported"), so Finny's
+ *                    client-credentials token can never carry the scope and
+ *                    every create returns 401. Kept only so existing
+ *                    deployments fail loudly rather than silently change
+ *                    behaviour on upgrade. Use power_automate instead.
  */
 
 interface GraphApprovalItem {
@@ -56,9 +65,38 @@ export async function createApprovalRequest(
     row.gross_cents === null ? null : Number(row.gross_cents),
   )}`;
 
+  // Managers are not Finny users — this revocable, logged link shows them the
+  // invoice document without an account (expires in 14 days), scoped to this
+  // approver. Built once and shared by every provider.
+  const documentUrl = buildAttachmentLink(invoiceId, {
+    scope: 'approver',
+    approverId,
+    createdBy: who,
+  });
+
   try {
     let externalId: string | null = null;
-    if (config.approvalsProvider === 'graph') {
+    if (config.approvalsProvider === 'power_automate') {
+      // The flow answers 202 with no body, so there is no id to read back.
+      // Correlation is on Finny's own requestId, echoed on the callback —
+      // deliberately not on an upstream id we would have to parse and trust.
+      await sendApprovalToFlow({
+        requestId,
+        invoiceId,
+        title,
+        description:
+          `Category: ${row.category ?? '—'} · PO: ${row.po_number ?? '—'} · Reviewed by ${who} in Finny.`,
+        approverName: approver.name,
+        approverEmail: approver.email,
+        documentUrl,
+        callbackUrl: `${config.appUrl.replace(/\/+$/, '')}/api/integrations/approvals/callback`,
+        vendor: row.vendor_name === null ? null : String(row.vendor_name),
+        invoiceRef: row.invoice_ref === null ? null : String(row.invoice_ref),
+        amount: centsToDecimal(row.gross_cents === null ? null : Number(row.gross_cents)),
+        category: row.category === null ? null : String(row.category),
+        poNumber: row.po_number === null ? null : String(row.po_number),
+      });
+    } else if (config.approvalsProvider === 'graph') {
       const item = await graphFetch<GraphApprovalItem>('/solutions/approval/approvalItems', {
         base: 'https://graph.microsoft.com/beta',
         method: 'POST',
@@ -67,10 +105,7 @@ export async function createApprovalRequest(
           description:
             `Category: ${row.category ?? '—'} · PO: ${row.po_number ?? '—'} · ` +
             `Reviewed by ${who} in Finny. ` +
-            // Managers are not Finny users — this revocable, logged link shows
-            // them the invoice document without an account (expires in 14 days),
-            // scoped to this approver.
-            `View the invoice: ${buildAttachmentLink(invoiceId, { scope: 'approver', approverId, createdBy: who })}`,
+            `View the invoice: ${documentUrl}`,
           approvalType: 'basic',
           allowEmailNotification: true,
           approvers: [{ user: { id: approver.teams_user_id ?? undefined, email: approver.email } }],

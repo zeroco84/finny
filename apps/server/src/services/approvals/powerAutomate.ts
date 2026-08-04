@@ -1,0 +1,81 @@
+import { config } from '../../config.js';
+import { isValidWebhookUrl, urlHost } from '../teamsWebhook.js';
+
+/**
+ * Raising Teams Approvals through an HTTP-triggered Power Automate flow.
+ *
+ * Why not Microsoft Graph: the Graph Approvals API
+ * (POST /beta/solutions/approval/approvalItems) supports DELEGATED permissions
+ * only — "Application: Not supported" in Microsoft's own permissions table — so
+ * Finny's client-credentials token can never carry the required scope and every
+ * create returns 401 "required scope(s) or role(s) not present". No permission
+ * grant fixes that. It is also beta-only and absent from Graph v1.0.
+ *
+ * A flow runs "Start and wait for an approval" under a service account's own
+ * connection, which is the supported production path and needs no per-user
+ * token storage. Finny POSTs the request; the flow POSTs the decision back to
+ * /api/integrations/approvals/callback with the shared bearer token.
+ */
+
+export interface ApprovalFlowRequest {
+  /** Finny's approval_requests.id — echoed back on the callback to correlate. */
+  requestId: string;
+  invoiceId: string;
+  title: string;
+  description: string;
+  approverName: string;
+  approverEmail: string;
+  /** Revocable, scoped, TTL-capped link letting the approver see the document. */
+  documentUrl: string;
+  /** Where the flow posts the decision — so the flow author hardcodes nothing. */
+  callbackUrl: string;
+  vendor: string | null;
+  invoiceRef: string | null;
+  amount: string | null;
+  category: string | null;
+  poNumber: string | null;
+}
+
+export function approvalsFlowConfigured(): boolean {
+  return Boolean(config.approvalsFlowUrl);
+}
+
+/** Host of the configured flow — for the UI. Never the signed URL itself. */
+export function approvalsFlowInfo(): { configured: boolean; host: string | null } {
+  const url = config.approvalsFlowUrl;
+  return { configured: Boolean(url), host: url ? urlHost(url) : null };
+}
+
+/**
+ * Hand one approval to the flow. Resolves when the flow has accepted it —
+ * NOT when a human decides, which arrives later on the callback.
+ *
+ * A "when an HTTP request is received" trigger answers 202 with no body unless
+ * the flow author adds a Response action, so any 2xx counts as accepted and the
+ * body is never required. (Assuming a JSON body here is precisely what broke
+ * the Graph path: it expected 200-with-body from an endpoint that answers 202.)
+ */
+export async function sendApprovalToFlow(request: ApprovalFlowRequest): Promise<void> {
+  const url = config.approvalsFlowUrl;
+  if (!url) throw new Error('APPROVALS_FLOW_URL is not set — no approval flow to call');
+  if (!isValidWebhookUrl(url)) {
+    throw new Error('Refusing to post: APPROVALS_FLOW_URL is not an allowed Microsoft endpoint');
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    // Don't follow a redirect off the validated host, and don't hang forever.
+    redirect: 'manual',
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!res.ok) {
+    // Never surface the upstream body: echoed into a stored error that is an
+    // internal-response read oracle. Log server-side, return the status only.
+    const body = await res.text().catch(() => '');
+    if (body) console.error(`[approvals] flow ${urlHost(url)} error body:`, body.slice(0, 300));
+    throw new Error(`Approval flow returned HTTP ${res.status}`);
+  }
+}

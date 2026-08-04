@@ -8,13 +8,32 @@ import { config } from '../config.js';
  * human session: BlockDocs' sync job polls with this token on a schedule.
  */
 export function requireBlockDocsToken(req: Request, res: Response, next: NextFunction): void {
-  if (!config.blockdocsToken) {
-    res.status(503).json({ error: 'BlockDocs integration is not configured' });
+  requireStaticToken(req, res, next, config.blockdocsToken, 'BlockDocs integration');
+}
+
+/**
+ * Auth for the Power Automate approval-decision callback. Same shape: the flow
+ * is a machine caller, not a human session. Unset token = endpoint closed (503),
+ * never open — a decision callback flips an invoice to approved, so it must
+ * fail shut.
+ */
+export function requireApprovalCallbackToken(req: Request, res: Response, next: NextFunction): void {
+  requireStaticToken(req, res, next, config.approvalsCallbackToken, 'Approval callback');
+}
+
+function requireStaticToken(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  expected: string,
+  label: string,
+): void {
+  if (!expected) {
+    res.status(503).json({ error: `${label} is not configured` });
     return;
   }
   const header = req.headers.authorization ?? '';
   const provided = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const expected = config.blockdocsToken;
   const ok =
     provided.length === expected.length &&
     crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));

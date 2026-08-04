@@ -962,7 +962,22 @@ export default function SettingsPage() {
               <tr>
                 <td>Teams Approvals</td>
                 <td><code>{status.approvals_provider}</code></td>
-                <td className="muted">{status.approvals_provider === 'mock' ? 'simulator panel on the invoice page' : status.approvals_last_error ?? (status.approvals_last_poll ? `last poll ${dateTime(status.approvals_last_poll)}` : '')}</td>
+                <td className="muted">
+                  {status.approvals_provider === 'mock'
+                    ? 'simulator panel on the invoice page'
+                    : status.approvals_provider === 'power_automate'
+                      ? <>
+                          {status.approvals_flow_host
+                            ? <>flow at <code>{status.approvals_flow_host}</code></>
+                            : <span className="form-error">APPROVALS_FLOW_URL is not set — approvals cannot be raised</span>}
+                          {status.approvals_flow_host && !status.approvals_callback_ready && (
+                            <span className="form-error"> · APPROVALS_CALLBACK_TOKEN is not set — the flow cannot report decisions back</span>
+                          )}
+                        </>
+                      : status.approvals_provider === 'graph'
+                        ? <span className="form-error">the Graph Approvals API is delegated-only and always returns 401 — use power_automate</span>
+                        : status.approvals_last_error ?? (status.approvals_last_poll ? `last poll ${dateTime(status.approvals_last_poll)}` : '')}
+                </td>
               </tr>
               <tr>
                 <td>Sage output</td>

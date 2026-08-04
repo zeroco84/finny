@@ -74,7 +74,7 @@ to text before extraction) into `apps/server/data/inbox/`
 | Learned rules layer | `rules.ts` + Rules page | structured table injected into the prompt as JSON context — not an unbounded prompt string |
 | Lead approval of rule changes | `rule_apply` setting (per type: category auto / approver review by default) | configurable in Settings |
 | Sage 50 batch export | `sage.ts` + Sage page | CSV matching the AP posting sheet, one file per entity |
-| Teams Approvals | `approvals/approvals.ts` | `mock` (simulator) → `APPROVALS_PROVIDER=graph` (beta endpoint) |
+| Teams Approvals | `approvals/approvals.ts` | `mock` (simulator) → `APPROVALS_PROVIDER=power_automate` (flow + callback) |
 | Immediate alerting (5 failure types) | `alerts.ts` — distinct templates with next steps | logged + in-UI → Teams webhook (`ALERT_WEBHOOK_URL`) when configured |
 | Event notifications (self-service) | `notifications.ts` + Notifications page | each user subscribes their own Teams chat to invoices matching amount / date / supplier / project criteria |
 | Audit trail | `audit_events` table, timeline on every invoice | — |
@@ -122,7 +122,7 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
 |---|---|
 | `ANTHROPIC_API_KEY` | switches extraction to Claude — key + model are also settable in-app (Settings → AI extraction, AP Lead; stored value wins). `EXTRACTION_MODEL` default `claude-opus-4-8` |
 | `MAIL_PROVIDER=graph` + `GRAPH_*` | polls the real shared mailbox |
-| `APPROVALS_PROVIDER=graph` | creates real Teams Approvals via Graph |
+| `APPROVALS_PROVIDER=power_automate` + `APPROVALS_FLOW_URL` + `APPROVALS_CALLBACK_TOKEN` | raises real Teams Approvals via a Power Automate flow (`graph` is delegated-only and always 401s — see below) |
 | `ALERT_WEBHOOK_URL` | failure alerts post to a Teams channel as a card (otherwise logged + shown in UI) |
 | `PORT`, `DATA_DIR`, `APP_URL` | plumbing; `APP_URL` is used in alert-email links |
 
@@ -144,17 +144,66 @@ Copy `.env.example` → `.env` (all optional — empty means fully mocked). High
    `GRAPH_BACKFILL_DAYS` (e.g. `7` to pull the last week). Auth failures raise the
    `mailbox_auth_failure` alert immediately — check Settings → Connectors for the last error.
 
-### Wiring up Teams Approvals
+### Wiring up Teams Approvals (`APPROVALS_PROVIDER=power_automate`)
 
-`approvals/approvals.ts` targets the Graph **beta** Approvals endpoint
-(`/beta/solutions/approval/approvalItems`) and polls for decisions. Approving managers are not
-Finny users, so each approval card carries a **signed, expiring link** (14 days, HMAC-bound to the
-invoice — `services/attachmentLinks.ts`) that shows them the invoice document with no account;
-rotating `SESSION_SECRET` invalidates outstanding links. Before go-live, verify the
-beta contract and required permission (`ApprovalSolution.ReadWrite`) against current Graph docs —
-Microsoft has moved this API before. If the tenant can't grant it, the pragmatic fallback used
-elsewhere is a Power Automate flow triggered by email/webhook; the provider seam
-(`createApprovalRequest` / `recordApprovalDecision`) is the only place that would change.
+> **Do not use `APPROVALS_PROVIDER=graph`.** The Graph Approvals API
+> (`/beta/solutions/approval/approvalItems`) supports **delegated permissions only** — Microsoft's
+> permissions table reads *"Application: Not supported"* — so Finny's client-credentials token can
+> never carry `ApprovalSolution.ReadWrite` and every create returns `401 … required scope(s) or
+> role(s) not present`. **No permission grant in Entra fixes this.** It is also beta-only and absent
+> from Graph v1.0. The `graph` value is kept solely so existing deployments fail loudly instead of
+> silently changing behaviour.
+
+Approvals are raised through an HTTP-triggered **Power Automate** flow running *Start and wait for
+an approval*. The flow's connection runs as a service account, so there are no per-user tokens to
+store or refresh.
+
+```
+Finny ──POST──▶ flow (Start and wait for an approval) ──▶ manager decides in Teams
+  ▲                                                              │
+  └────── POST /api/integrations/approvals/callback ◀────────────┘
+```
+
+**1. Build the flow** in Power Automate:
+
+| Step | Action | Notes |
+| --- | --- | --- |
+| Trigger | *When an HTTP request is received* | Method `POST`. Copy the generated URL into `APPROVALS_FLOW_URL`. |
+| 1 | *Start and wait for an approval* | Type **Approve/Reject – First to respond**. Title `@{triggerBody()?['title']}`, Assigned to `@{triggerBody()?['approverEmail']}`, Details including `@{triggerBody()?['documentUrl']}`. |
+| 2 | *HTTP* | `POST` to `@{triggerBody()?['callbackUrl']}`, header `Authorization: Bearer <APPROVALS_CALLBACK_TOKEN>`, body below. |
+
+```json
+{
+  "requestId": "@{triggerBody()?['requestId']}",
+  "decision": "@{if(equals(outputs('Start_and_wait_for_an_approval')?['body/outcome'],'Approve'),'approved','rejected')}",
+  "decidedBy": "@{outputs('Start_and_wait_for_an_approval')?['body/responses'][0]['responder']['displayName']}",
+  "note": "@{outputs('Start_and_wait_for_an_approval')?['body/responses'][0]['comments']}"
+}
+```
+
+**2. Set the environment variables:**
+
+| Variable | Value |
+| --- | --- |
+| `APPROVALS_PROVIDER` | `power_automate` |
+| `APPROVALS_FLOW_URL` | the flow's HTTP trigger URL (contains a `sig=` signature — treated as a secret: never logged, never returned to a client, only posted to an allowlisted Microsoft host) |
+| `APPROVALS_CALLBACK_TOKEN` | a long random string, also set as the `Authorization: Bearer` header in the flow's HTTP step |
+
+Settings → **Connectors** shows the flow host and flags either variable being unset.
+
+**Notes.** Finny correlates on its own `requestId`, echoed back on the callback — nothing depends on
+parsing an upstream identifier. The trigger answers `202` with no body, and any `2xx` counts as
+accepted. The callback is idempotent: a retried or late callback for an already-decided request
+returns `200 {"applied": false}` and changes nothing, so a decision can never be flipped. Without
+`APPROVALS_CALLBACK_TOKEN` the endpoint fails **shut** (`503`), never open.
+
+Approving managers are not Finny users, so each approval carries a **signed, expiring link**
+(14 days, HMAC-bound to the invoice — `services/attachmentLinks.ts`) that shows them the invoice
+document with no account; rotating `SESSION_SECRET` invalidates outstanding links.
+
+Because decisions arrive by callback there is no approvals poller in this mode. If a flow run is
+deleted or its HTTP step fails, the request stays `pending` — worth a watchdog before org-wide
+rollout.
 
 ### Event notifications (self-service)
 
