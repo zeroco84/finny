@@ -164,11 +164,15 @@ Finny ──POST──▶ flow (Start and wait for an approval) ──▶ manage
   └────── POST /api/integrations/approvals/callback ◀────────────┘
 ```
 
-**1. Build the flow** in Power Automate:
+**1. Build the flow** in Power Automate. Create it as an **Instant cloud flow** — an inbound
+HTTP call reads like an "automated" event, but Microsoft files *When an HTTP request is received*
+under Instant (triggered on demand, alongside manual buttons and Power Apps); Automated is for
+connector-polled events like mail arriving. The category only filters the initial trigger list, so
+if your designer doesn't offer it there, start blank and add the trigger directly.
 
 | Step | Action | Notes |
 | --- | --- | --- |
-| Trigger | *When an HTTP request is received* | Method `POST`. Copy the generated URL into `APPROVALS_FLOW_URL`. |
+| Trigger | *When an HTTP request is received* | Method `POST`. Copy the generated URL into `APPROVALS_FLOW_URL`. The URL only exists after you save the flow once. |
 | 1 | *Start and wait for an approval* | Type **Approve/Reject – First to respond**. Title `@{triggerBody()?['title']}`, Assigned to `@{triggerBody()?['approverEmail']}`, Details including `@{triggerBody()?['documentUrl']}`. |
 | 2 | *HTTP* | `POST` to `@{triggerBody()?['callbackUrl']}`, header `Authorization: Bearer <APPROVALS_CALLBACK_TOKEN>`, body below. |
 
@@ -190,6 +194,14 @@ Finny ──POST──▶ flow (Start and wait for an approval) ──▶ manage
 | `APPROVALS_CALLBACK_TOKEN` | a long random string, also set as the `Authorization: Bearer` header in the flow's HTTP step |
 
 Settings → **Connectors** shows the flow host and flags either variable being unset.
+
+**Tenant prerequisites.** Approvals are stored in Microsoft Dataverse. In the **default**
+environment it is provisioned automatically; in any **other** environment the person who runs the
+first approval flow needs an **administrator role in that environment**, and provisioning takes a
+few minutes on that first run. The Approvals connector itself is *standard*, so any licence granting
+Power Automate access covers it — but confirm the licence tier of the **Request** connector (the
+HTTP trigger) with whoever owns Power Automate licensing before org-wide rollout, since a premium
+requirement there would apply to the flow's owner.
 
 **Notes.** Finny correlates on its own `requestId`, echoed back on the callback — nothing depends on
 parsing an upstream identifier. The trigger answers `202` with no body, and any `2xx` counts as
