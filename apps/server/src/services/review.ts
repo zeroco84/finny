@@ -255,11 +255,28 @@ export async function submitReview(
 export async function retryApproval(invoiceId: string, user: SessionUser): Promise<void> {
   const row = getInvoiceRow(invoiceId);
   if (!row) throw new ReviewError('Invoice not found', 404);
-  if (row.status !== 'confirmed') {
-    throw new ReviewError('Only confirmed invoices with a failed approval can be retried', 409);
+  // 'confirmed' = the request failed outright. 'awaiting_approval' = a request
+  // was raised but its decision never came back, which strands the invoice with
+  // no other way out: the approver has answered in Teams and Finny will wait
+  // forever. Both need the same fix, so both are retryable.
+  if (row.status !== 'confirmed' && row.status !== 'awaiting_approval') {
+    throw new ReviewError('Only confirmed or awaiting-approval invoices can be retried', 409);
   }
   const approverId = row.approver_id === null ? null : String(row.approver_id);
   if (!approverId) throw new ReviewError('Invoice has no approver assigned');
+
+  // Supersede any request still pending, so a late callback for the old one
+  // cannot land after the replacement has been decided. recordApprovalDecision
+  // only acts on 'pending', so this makes the old request inert.
+  const superseded = run(
+    `UPDATE approval_requests SET status = 'failed', error = ? WHERE invoice_id = ? AND status = 'pending'`,
+    `Superseded by a retry from ${user.email}`,
+    invoiceId,
+  );
+  // run() returns {changes}, which is always truthy — check the count, or the
+  // audit trail claims a supersede on every retry including the first.
+  if (Number(superseded.changes) > 0) audit(invoiceId, 'approval_superseded', user.email, {});
+
   await createApprovalRequest(invoiceId, approverId, user.email);
 }
 

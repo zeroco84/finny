@@ -9,6 +9,10 @@ export const DEFAULT_SETTINGS: Settings = {
   extraction_model: '', // '' = use the deployment default (config.extractionModel)
   confidence_threshold: 0.75,
   review_sla_hours: 4,
+  // Deliberately generous: an approver taking a day or two is normal, so a
+  // shorter window would cry wolf. The point is catching a decision that never
+  // arrives at all, which is otherwise invisible forever.
+  approval_sla_hours: 48,
   alert_webhook_url: '',
   entities: [
     'Meadowvale Developments Ltd',

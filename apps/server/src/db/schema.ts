@@ -114,7 +114,9 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   created_at TEXT NOT NULL,
   decided_at TEXT,
   decided_by_name TEXT,
-  decision_note TEXT
+  decision_note TEXT,
+  -- One alert per stranded approval, not one per watchdog tick.
+  stall_alerted INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_approval_invoice ON approval_requests(invoice_id);
 
