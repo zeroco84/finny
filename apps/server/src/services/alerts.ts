@@ -114,6 +114,20 @@ const TEMPLATES: Record<AlertType, Template> = {
     nextStep:
       'IT: check the Graph app registration (client secret expiry, Mail.Read permission on the shared mailbox) and the network. Finny retries automatically each poll.',
   },
+  // An approval nobody has answered — or, more insidiously, one already
+  // answered in Teams whose decision never reached Finny. Both look identical
+  // from here, so the alert names both and the next step distinguishes them.
+  // Without this an approval decided in Teams strands its invoice silently and
+  // permanently: nothing fails, nothing logs, and the queue looks healthy.
+  approval_stalled: {
+    severity: 'warning',
+    subject: (ctx) => `[Finny] Approval still pending: ${ctx.vendor ?? 'invoice'} ${ctx.invoiceRef ?? ''}`.trim(),
+    body: (ctx) =>
+      `An approval request has been waiting ${ctx.extra ?? 'longer than the SLA'} with no decision.\n\n` +
+      `Either the approver hasn't answered yet, or they have and the decision never reached Finny.`,
+    nextStep:
+      'Check Teams Approvals. If it is still awaiting a decision, chase the approver. If it has already been decided there, the callback was lost — use "Retry approval" on the invoice to raise a fresh request.',
+  },
   // Raised only after the per-message retry budget is spent. The mailbox itself
   // is healthy — everything behind this message keeps flowing — but this one
   // email needs a human, and nothing else will tell anyone about it.

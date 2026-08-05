@@ -81,7 +81,7 @@ to text before extraction) into `apps/server/data/inbox/`
 | Duplicate detection (P1) | `findDuplicate` + warning banners | same vendor + invoice ref |
 | Non-invoice handling | doc-type classification in extraction; statements/remittances auto-file to Completed (audited, reopenable) — "other" still goes to review | same in both providers |
 | Accuracy dashboard (P1) | `metrics.ts` + Dashboard page | AI-vs-human comparisons from every completed review |
-| Configurable thresholds (P1) | Settings (confidence %, SLA hours) | — |
+| Configurable thresholds (P1) | Settings (confidence %, review SLA hours, approval SLA hours) | — |
 
 **P1 items not in this build:** bulk confirm, PO matching (needs a PO system to match against),
 and the trusted-vendor fast lane — all fit naturally on the current schema when wanted.
@@ -98,7 +98,7 @@ apps/server   Express 5 + node:sqlite (WAL) — API, background workers, connect
   src/services/sage.ts      Sage 50 CSV batches
   src/services/approvals    mock simulator · Graph Teams Approvals scaffold + poller
   src/services/alerts.ts    templates per failure type, immediate email or logged
-  src/workers.ts            mail poll · extraction queue · SLA watchdog · approvals poll
+  src/workers.ts            mail poll · extraction queue · SLA watchdog · stalled-approval watchdog
 apps/web      React 19 + Vite — queue, review, rules, alerts, Sage, dashboards (accuracy + volume), settings
 packages/shared  one set of domain types used by both
 ```

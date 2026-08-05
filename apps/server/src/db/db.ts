@@ -30,6 +30,7 @@ function migrate(database: DatabaseSync): void {
   ensureColumn('invoices', 'sage_posted_at', 'TEXT');
   ensureColumn('sage_batches', 'entity', 'TEXT');
   ensureColumn('approvers', 'source', "TEXT NOT NULL DEFAULT 'manual'");
+  ensureColumn('approval_requests', 'stall_alerted', 'INTEGER NOT NULL DEFAULT 0');
   database.exec(`CREATE TABLE IF NOT EXISTS sage_nominals (
     entity TEXT NOT NULL,
     account_ref TEXT NOT NULL,

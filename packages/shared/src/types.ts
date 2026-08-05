@@ -256,7 +256,8 @@ export type AlertType =
   | 'sage_sequence_adjusted'
   | 'teams_api_failure'
   | 'mailbox_auth_failure'
-  | 'mail_message_failed';
+  | 'mail_message_failed'
+  | 'approval_stalled';
 
 export interface Alert {
   id: string;
@@ -374,6 +375,9 @@ export interface Settings {
   extraction_model: string;
   confidence_threshold: number; // 0..1 — below this a field is flagged
   review_sla_hours: number; // low-confidence invoice untouched this long -> alert
+  /** Approval pending this long -> alert. Catches a lost decision callback,
+   *  which otherwise strands an invoice silently and forever. */
+  approval_sla_hours: number;
   /** Teams-subscribable Incoming Webhook URL alerts are POSTed to (empty = alerts
    *  are stored and shown in the UI only). */
   alert_webhook_url: string;
