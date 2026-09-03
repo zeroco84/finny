@@ -2,13 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { config, hardeningProblems, isLocalAppUrl, MIN_STATIC_TOKEN_LENGTH } from '../src/config.js';
-import { closeDb, one, openDb, run } from '../src/db/db.js';
+import { all, closeDb, one, openDb, run } from '../src/db/db.js';
 import { createSessionCookie, readSession } from '../src/api/auth.js';
 import { createApp } from '../src/index.js';
 import { RATE_LIMITS } from '../src/api/routes.js';
 import { seedDefaults, getSettings } from '../src/services/settings.js';
 import { nowIso } from '../src/domain/util.js';
-import { ensureTeamMemberOnSignIn } from '../src/services/team.js';
+import { ensureTeamMemberOnSignIn, seedTeam, setMemberRole, syncGroup } from '../src/services/team.js';
+import { clientIp, isCloudflareAddress } from '../src/api/clientIp.js';
+import { buildAttachmentLink } from '../src/services/attachmentLinks.js';
 import type { Request } from 'express';
 
 /**
@@ -230,5 +232,115 @@ describe('a directory seat is pinned to one Entra account (L2)', () => {
     expect(readSession(reqWith({ email: 'pin@example.com', name: 'Pin', role: 'lead', oid: 'oid-other' }))).toBeNull();
     // A legacy cookie with no oid (minted before this change) still works until it expires.
     expect(readSession(reqWith({ email: 'pin@example.com', name: 'Pin', role: 'lead' }))).toMatchObject({ role: 'lead' });
+  });
+});
+
+describe('leaver check covers every non-pinned seat (N1)', () => {
+  const saved = { secret: config.sessionSecret, auth: config.authProvider, leads: config.leadEmails, provider: config.team.provider };
+  const reqWith = (user: { email: string; name: string; role: 'processor' | 'lead' }) =>
+    ({ headers: { cookie: createSessionCookie(user).split(';')[0] } }) as unknown as Request;
+
+  beforeEach(() => {
+    closeDb();
+    openDb(':memory:');
+    config.sessionSecret = 'test-secret';
+    config.authProvider = 'entra';
+    config.leadEmails = [];
+    config.team.provider = 'mock'; // the sample group: amy, rory, niamh, cian, orla, dara
+  });
+  afterEach(() => {
+    config.sessionSecret = saved.secret;
+    config.authProvider = saved.auth;
+    config.leadEmails = saved.leads;
+    config.team.provider = saved.provider;
+  });
+
+  it('a member promoted in Settings who then leaves the group loses their seat on the next sync', async () => {
+    seedTeam();
+    await syncGroup('amy@example.com');
+    run(`INSERT INTO team_members (email, name, role, source, in_group, updated_at) VALUES ('gone@example.com', 'Gone', 'processor', 'group', 1, ?)`, nowIso());
+    setMemberRole('gone@example.com', 'lead', 'amy@example.com'); // source becomes 'manual'
+    expect(readSession(reqWith({ email: 'gone@example.com', name: 'Gone', role: 'lead' }))).toMatchObject({ role: 'lead' });
+    await syncGroup('amy@example.com'); // the sample group never contained them
+    expect(readSession(reqWith({ email: 'gone@example.com', name: 'Gone', role: 'lead' }))).toBeNull();
+    // Members Graph still lists keep their seats and their manual roles.
+    expect(readSession(reqWith({ email: 'niamh@example.com', name: 'Niamh', role: 'processor' }))).not.toBeNull();
+  });
+
+  it('the first-user bootstrap lead is governed by the group like everyone else', async () => {
+    expect(ensureTeamMemberOnSignIn({ email: 'founder@example.com', name: 'F', role: 'processor' })).toBe('lead');
+    seedTeam(); // the sample group arrives (founder is not in it)
+    await syncGroup('amy@example.com');
+    expect(readSession(reqWith({ email: 'founder@example.com', name: 'F', role: 'lead' }))).toBeNull();
+  });
+
+  it('SSO sign-in does not quietly reopen a seat the sync closed; dev sign-in still does', () => {
+    run(`INSERT INTO team_members (email, name, role, source, in_group, updated_at) VALUES ('left@example.com', 'Left', 'processor', 'group', 0, ?)`, nowIso());
+    expect(() => ensureTeamMemberOnSignIn({ email: 'left@example.com', name: 'Left', role: 'processor' })).toThrow(/no longer in the Finny team group/);
+    config.authProvider = 'dev';
+    expect(ensureTeamMemberOnSignIn({ email: 'left@example.com', name: 'Left', role: 'processor' })).toBe('processor');
+  });
+
+  it('refuses to apply a group that does not include the person syncing it', async () => {
+    seedTeam();
+    await expect(syncGroup('stranger@example.com')).rejects.toThrow(/does not include you/);
+    // Nothing was closed by the refused sync.
+    expect(one<{ n: number }>(`SELECT COUNT(*) AS n FROM team_members WHERE in_group = 0`)?.n).toBe(0);
+    config.leadEmails = ['stranger@example.com']; // a config pin may sync a group it is not in
+    await expect(syncGroup('stranger@example.com')).resolves.toBeTruthy();
+  });
+});
+
+describe('client address behind Cloudflare (N2)', () => {
+  const fakeReq = (ip: string, headers: Record<string, string> = {}) =>
+    ({ ip, get: (h: string) => headers[h.toLowerCase()] }) as unknown as Request;
+
+  it('believes CF-Connecting-IP only when the connecting hop is a Cloudflare address', () => {
+    expect(isCloudflareAddress('104.16.1.1')).toBe(true);
+    expect(isCloudflareAddress('::ffff:172.64.0.9')).toBe(true);
+    expect(isCloudflareAddress('2606:4700::1')).toBe(true);
+    expect(isCloudflareAddress('8.8.8.8')).toBe(false);
+    expect(clientIp(fakeReq('104.16.1.1', { 'cf-connecting-ip': '203.0.113.7' }))).toBe('203.0.113.7');
+    expect(clientIp(fakeReq('::ffff:104.16.1.1', { 'cf-connecting-ip': '203.0.113.7' }))).toBe('203.0.113.7');
+    // A direct caller to the origin cannot forge the header.
+    expect(clientIp(fakeReq('8.8.8.8', { 'cf-connecting-ip': '203.0.113.7' }))).toBe('8.8.8.8');
+    // Garbage in the header falls back to the connecting address.
+    expect(clientIp(fakeReq('104.16.1.1', { 'cf-connecting-ip': 'not-an-ip' }))).toBe('104.16.1.1');
+    expect(clientIp(fakeReq('::ffff:127.0.0.1'))).toBe('127.0.0.1');
+  });
+
+  it('the attachment-link audit row records the user behind Cloudflare, not the edge', async () => {
+    const saved = { secret: config.sessionSecret, trust: config.trustProxy, appUrl: config.appUrl };
+    closeDb();
+    openDb(':memory:');
+    seedDefaults();
+    config.sessionSecret = 'test-secret';
+    config.trustProxy = 1;
+    config.appUrl = 'https://finny.test';
+    const app = createApp();
+    const server: Server = await new Promise((resolve) => {
+      const s = app.listen(0, () => resolve(s));
+    });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      run(`INSERT INTO invoices (id, source, received_at, status, created_at, updated_at) VALUES ('inv-cf', 'test', ?, 'needs_review', ?, ?)`, nowIso(), nowIso(), nowIso());
+      const token = new URL(buildAttachmentLink('inv-cf', { scope: 'approver' })).searchParams.get('t')!;
+      const open = (headers: Record<string, string>) =>
+        fetch(`${base}/api/public/invoices/inv-cf/attachment?t=${token}`, { headers });
+      // Via Cloudflare: XFF's rightmost entry (the trusted hop) is an edge.
+      await open({ 'x-forwarded-for': '104.16.1.1', 'cf-connecting-ip': '203.0.113.7' });
+      // Straight to the origin with a forged header: the header is ignored.
+      await open({ 'x-forwarded-for': '198.51.100.9', 'cf-connecting-ip': '203.0.113.7' });
+      const ips = all<{ detail: string }>(`SELECT detail FROM audit_events WHERE type = 'attachment_link_viewed' ORDER BY rowid`).map(
+        (r) => JSON.parse(r.detail).ip,
+      );
+      expect(ips).toEqual(['203.0.113.7', '198.51.100.9']);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      closeDb();
+      config.sessionSecret = saved.secret;
+      config.trustProxy = saved.trust;
+      config.appUrl = saved.appUrl;
+    }
   });
 });

@@ -1,5 +1,5 @@
 import express, { Router, type Request } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
 import type { ConnectorStatus, Overview, ReviewSubmission, WebhookSubscriptionInput } from '@finny/shared';
 import { config } from '../config.js';
@@ -21,6 +21,7 @@ import {
 } from '../services/invoices.js';
 import { entraCallback, entraLogin } from './entra.js';
 import { requireApprovalCallbackToken, requireBlockDocsToken } from './integrationAuth.js';
+import { clientIp } from './clientIp.js';
 import { ReviewError, retryApproval, submitReview } from '../services/review.js';
 import { resetForRetry } from '../services/extraction/pipeline.js';
 import { drainExtractionQueue } from '../workers.js';
@@ -100,7 +101,7 @@ function paramId(req: Request): string {
  * Generous for any legitimate caller (a human signing in, an approver opening
  * one document, a flow posting one decision, BlockDocs polling on a schedule)
  * and tight enough that guessing a token or hammering sign-in is slow. Keyed on
- * req.ip, which is the real client only when "trust proxy" is set — see config.
+ * the real client address — see clientIp.ts for how that survives Cloudflare.
  */
 export const RATE_LIMITS = {
   auth: { windowMs: 60_000, limit: 30 },
@@ -111,6 +112,9 @@ export const RATE_LIMITS = {
 function limiter(spec: { windowMs: number; limit: number }) {
   return rateLimit({
     ...spec,
+    // ipKeyGenerator masks IPv6 to its /56 so one user cannot rotate through a
+    // whole allocation; clientIp() supplies the address it masks.
+    keyGenerator: (req) => ipKeyGenerator(clientIp(req)),
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: 'Too many requests — try again in a minute' },
@@ -204,7 +208,7 @@ export function buildRouter(): Router {
     // decorative. Redemption is logged with the caller's IP.
     const redeemed = redeemAttachmentToken(
       typeof req.query.t === 'string' ? req.query.t : undefined,
-      { ip: req.ip, ua: req.get('user-agent') },
+      { ip: clientIp(req), ua: req.get('user-agent') },
     );
     const row = redeemed ? getInvoiceRow(redeemed.invoiceId) : undefined;
     if (!row || !row.attachment_path) {

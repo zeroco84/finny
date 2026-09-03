@@ -156,6 +156,13 @@ export function ensureTeamMemberOnSignIn(user: SessionUser): TeamRole {
     if (existing.entra_oid && user.oid && existing.entra_oid !== user.oid) {
       throw new TeamError('This email belongs to a different account in the team directory', 403);
     }
+    // A row the group sync flagged as having left keeps its seat closed under
+    // SSO: sign-in must not quietly re-admit a leaver whose Entra account is
+    // still enabled. Only a fresh sync (or a config pin) reopens it. Dev
+    // sign-in keeps re-admitting, as it always has.
+    if (Number(existing.in_group) !== 1 && !isConfigLead && config.authProvider === 'entra') {
+      throw new TeamError('This account is no longer in the Finny team group — ask an AP Lead to sync the team', 403);
+    }
     const role: TeamRole = isConfigLead ? 'lead' : asRole(existing.role);
     const nameChanged = Boolean(name) && name !== existing.name;
     const roleChanged = role !== asRole(existing.role);
@@ -261,9 +268,23 @@ async function fetchGroupMembers(): Promise<GroupPerson[]> {
 export async function syncGroup(actorEmail: string): Promise<TeamDirectory> {
   const people = await fetchGroupMembers();
   const now = nowIso();
-  // Clear the flag on group-sourced rows; the upserts below re-set it for
-  // everyone still present, leaving departed members flagged not-in-group.
-  run("UPDATE team_members SET in_group = 0 WHERE source = 'group'");
+  const actor = normalize(actorEmail);
+  // A group that does not contain the person running the sync is almost
+  // certainly the wrong group id, and applying it would close every seat
+  // including theirs. Refuse before touching anything; config pins are exempt
+  // because their seat never closes.
+  if (!config.leadEmails.includes(actor) && !people.some((p) => normalize(p.email) === actor)) {
+    throw new TeamError(
+      `The synced group does not include you (${actor}) — check FINNY_TEAM_GROUP_ID before applying it`,
+      409,
+    );
+  }
+  // Close every seat the group governs — that is every row except a config
+  // pin, whatever its provenance — then the upserts below reopen the ones
+  // Graph still lists. `source` records how a row got here (group sync, a
+  // manual role edit, the first-user bootstrap); it is not a licence to stay
+  // after leaving the group, which is what scoping this to 'group' made it.
+  run("UPDATE team_members SET in_group = 0 WHERE source != 'config'");
   for (const person of people) {
     const email = normalize(person.email);
     run(
