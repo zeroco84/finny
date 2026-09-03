@@ -1,4 +1,3 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import type { LineItem } from '@finny/shared';
 import crypto from 'node:crypto';
 import {
@@ -12,6 +11,7 @@ import {
 import { parseInvoiceDate, parseMoneyToCents } from '../../domain/util.js';
 import { classifyStatementLike, isPaymentRecommendation } from './docSteering.js';
 import { convertToText, isConvertibleToText } from './convert.js';
+import { extractPdfText } from './pdfText.js';
 
 /**
  * Offline extractor: parses the PDF text layer with deterministic patterns.
@@ -176,18 +176,10 @@ export const mockExtractor: Extractor = {
       return extractFromText(convertToText(buffer, mime), context);
     }
 
-    // pdf-parse's bundled (old) pdf.js reads the WHOLE underlying ArrayBuffer,
-    // but Buffers usually live at an offset inside Node's shared 8KB pool —
-    // neighbouring slab bytes then corrupt the parse ("bad XRef entry").
-    // An exact-bounds copy (fresh ArrayBuffer, byteOffset 0) fixes it.
-    const exact = new Uint8Array(buffer);
     let text: string;
     try {
-      // Bound the parse: cap pages (a huge page count can't drive an unbounded
-      // loop) and select the newer bundled pdf.js build (past CVE-2018-5158)
-      // rather than pdf-parse's 2018-era default.
-      const parsed = await pdfParse(exact as unknown as Buffer, { max: 50, version: 'v2.0.550' });
-      text = parsed.text ?? '';
+      // Bounded: 50 pages, a deadline, and a worker of its own — see pdfText.ts.
+      text = (await extractPdfText(buffer, { maxPages: 50 })).text;
     } catch (err) {
       throw new UnreadableDocumentError(
         `PDF could not be parsed (${err instanceof Error ? err.message : 'corrupt file'})`,

@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { extractPdfText } from './pdfText.js';
 import { convertToText, isConvertibleToText } from './convert.js';
 
 /**
@@ -60,12 +60,10 @@ export async function sniffPaymentRecommendation(buffer: Buffer, mime: string): 
   }
   if (mime !== 'application/pdf') return false;
   try {
-    // Exact-bounds copy: pdf-parse reads the whole underlying ArrayBuffer, and
-    // pooled Buffers corrupt the parse ("bad XRef entry"). Title lives on page
-    // one, so cap the parse there.
-    const exact = new Uint8Array(buffer);
-    const parsed = await pdfParse(exact as unknown as Buffer, { max: 1, version: 'v2.0.550' });
-    return isPaymentRecommendation(parsed.text ?? '');
+    // Title lives on page one, so cap the parse there; a short deadline too,
+    // since this runs on every PDF and a slow one must not hold the queue.
+    const { text } = await extractPdfText(buffer, { maxPages: 1, timeoutMs: 10_000 });
+    return isPaymentRecommendation(text);
   } catch {
     return false;
   }
