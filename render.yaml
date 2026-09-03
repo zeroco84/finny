@@ -27,7 +27,16 @@ services:
         value: /data
       - key: SESSION_SECRET
         generateValue: true
+      # Who may sign in. `entra` = Microsoft 365 SSO (the team-facing deploy;
+      # needs ENTRA_*/GRAPH_* too). `dev` = name/email/role picker — anyone
+      # who reaches the URL can make themselves AP Lead, so the server refuses
+      # to boot with it on a public URL unless ALLOW_DEV_AUTH=true is also set
+      # (a throwaway SEED_DEMO sandbox only). Filled in at blueprint time.
+      - key: AUTH_PROVIDER
+        sync: false
       # APP_URL is derived from Render's RENDER_EXTERNAL_URL automatically.
       # When moving past the mocked demo, add: ANTHROPIC_API_KEY (Claude
       # extraction), GRAPH_* + MAIL_PROVIDER=graph (shared mailbox),
-      # APPROVALS_PROVIDER=graph (Teams), SMTP_* (real alert emails).
+      # APPROVALS_PROVIDER=power_automate + APPROVALS_FLOW_URL/_SECRET/
+      # _CALLBACK_TOKEN (Teams approvals), ALERT_WEBHOOK_URL (Teams alerts).
+      # Machine tokens must be 32+ characters or the server refuses to boot.
