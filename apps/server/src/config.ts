@@ -171,7 +171,9 @@ export const config = {
   // internal hop unless the X-Forwarded-For chain is trusted, which makes the
   // attachment-link audit IPs useless and the rate limiter throttle everyone
   // together. Defaults to one hop on Render (it sets RENDER=true), none
-  // elsewhere. Set TRUST_PROXY=2 when a CDN (Cloudflare) fronts the domain.
+  // elsewhere. Leave it at one hop behind Cloudflare too: api/clientIp.ts
+  // reads CF-Connecting-IP when the connecting address is Cloudflare's, and
+  // trusting a second hop would let a direct caller forge X-Forwarded-For.
   trustProxy: parseTrustProxy(env('TRUST_PROXY', process.env.RENDER ? '1' : 'false')),
   // Entra ID SSO (AUTH_PROVIDER=entra). The ENTRA_* vars fall back to the
   // GRAPH_* app registration — one registration can serve both mail polling

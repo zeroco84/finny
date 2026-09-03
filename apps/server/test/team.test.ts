@@ -156,7 +156,9 @@ describe('seedTeam + syncGroup (mock provider)', () => {
        VALUES ('contractor@example.com', 'Contractor', 'processor', 'manual', 0, '2026-01-01T00:00:00Z', 'admin@example.com')`,
     );
 
-    const dir = await syncGroup('admin@example.com');
+    // Synced by a member of the group (a sync by someone the group does not
+    // include is refused as a probable wrong group id).
+    const dir = await syncGroup('amy@example.com');
     expect(dir.members.find((m) => m.email === 'niamh@example.com')).toMatchObject({ role: 'lead', in_group: true });
     expect(dir.members.find((m) => m.email === 'amy@example.com')?.in_group).toBe(true);
     expect(dir.members.find((m) => m.email === 'contractor@example.com')?.in_group).toBe(false);
