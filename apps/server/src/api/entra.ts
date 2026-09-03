@@ -4,7 +4,7 @@ import * as oidc from 'openid-client';
 import type { SessionUser } from '@finny/shared';
 import { config } from '../config.js';
 import { audit } from '../services/audit.js';
-import { ensureTeamMemberOnSignIn } from '../services/team.js';
+import { ensureTeamMemberOnSignIn, TeamError } from '../services/team.js';
 import { createSessionCookie } from './auth.js';
 
 /**
@@ -122,13 +122,18 @@ export function roleForEmail(email: string): SessionUser['role'] {
 }
 
 export function userFromClaims(claims: Record<string, unknown>): SessionUser | null {
+  // Entra does not promise the email claim is verified for guest/B2B accounts.
+  // When the app registration emits the optional xms_edov claim ("email domain
+  // owner verified"), a false value means exactly the spoofable case; refuse it.
+  if (claims.xms_edov === false || claims.xms_edov === 'false') return null;
   const email =
     (typeof claims.email === 'string' && claims.email) ||
     (typeof claims.preferred_username === 'string' && claims.preferred_username) ||
     null;
   if (!email || !email.includes('@')) return null;
   const name = typeof claims.name === 'string' && claims.name ? claims.name : email;
-  return { email, name, role: roleForEmail(email) };
+  const oid = typeof claims.oid === 'string' && claims.oid ? claims.oid : undefined;
+  return { email, name, role: roleForEmail(email), ...(oid ? { oid } : {}) };
 }
 
 // ── Route handlers ───────────────────────────────────────────────────────────
@@ -186,8 +191,18 @@ export async function entraCallback(req: Request, res: Response): Promise<void> 
       return;
     }
     // Register the sign-in in the team directory (first-user bootstrap / config
-    // pin) and sign the cookie with the resolved privilege level.
-    user.role = ensureTeamMemberOnSignIn(user);
+    // pin) and sign the cookie with the resolved privilege level. A different
+    // Entra account presenting a directory member's email is refused here.
+    try {
+      user.role = ensureTeamMemberOnSignIn(user);
+    } catch (err) {
+      if (err instanceof TeamError) {
+        audit(null, 'sign_in_refused', user.email, { provider: 'entra', reason: err.message, oid: user.oid ?? null });
+        fail(`sign-in refused for ${user.email}: ${err.message}`);
+        return;
+      }
+      throw err;
+    }
     audit(null, 'signed_in', user.email, { provider: 'entra', role: user.role });
     res.setHeader('Set-Cookie', [clearFlowCookie(), createSessionCookie(user)]);
     res.redirect('/');

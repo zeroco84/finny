@@ -8,6 +8,7 @@ import { createApp } from '../src/index.js';
 import { RATE_LIMITS } from '../src/api/routes.js';
 import { seedDefaults, getSettings } from '../src/services/settings.js';
 import { nowIso } from '../src/domain/util.js';
+import { ensureTeamMemberOnSignIn } from '../src/services/team.js';
 import type { Request } from 'express';
 
 /**
@@ -188,5 +189,46 @@ describe('HTTP hardening over the real app (M3, M4, M5, L4)', () => {
     expect((await json('PATCH', '/api/rules/r1', { category: 42 })).status).toBe(400);
     expect((await json('PATCH', '/api/rules/r1', { status: 'retired' })).status).toBe(400); // not patchable here
     expect((await json('PATCH', '/api/rules/r1', { category: 'Materials' })).status).toBe(200);
+  });
+});
+
+describe('a directory seat is pinned to one Entra account (L2)', () => {
+  const saved = { secret: config.sessionSecret, auth: config.authProvider, leads: config.leadEmails, provider: config.team.provider };
+  const reqWith = (user: { email: string; name: string; role: 'processor' | 'lead'; oid?: string }) =>
+    ({ headers: { cookie: createSessionCookie(user).split(';')[0] } }) as unknown as Request;
+
+  beforeEach(() => {
+    closeDb();
+    openDb(':memory:');
+    config.sessionSecret = 'test-secret';
+    config.authProvider = 'entra';
+    config.leadEmails = [];
+    config.team.provider = 'mock';
+  });
+  afterEach(() => {
+    config.sessionSecret = saved.secret;
+    config.authProvider = saved.auth;
+    config.leadEmails = saved.leads;
+    config.team.provider = saved.provider;
+  });
+
+  it('records the object id on first sign-in and refuses a different account with the same email', () => {
+    const first = { email: 'niamh@example.com', name: 'Niamh', role: 'processor' as const, oid: 'oid-niamh' };
+    expect(ensureTeamMemberOnSignIn(first)).toBe('lead'); // first-user bootstrap
+    expect(one<{ entra_oid: string }>(`SELECT entra_oid FROM team_members WHERE email = 'niamh@example.com'`)?.entra_oid).toBe('oid-niamh');
+    expect(() => ensureTeamMemberOnSignIn({ ...first, oid: 'oid-guest' })).toThrow(/different account/);
+    expect(ensureTeamMemberOnSignIn(first)).toBe('lead'); // the real account still signs in
+  });
+
+  it('a cookie minted for another account is rejected once the seat is pinned, even for a config lead', () => {
+    run(
+      `INSERT INTO team_members (email, name, role, source, in_group, updated_at, entra_oid) VALUES ('pin@example.com', 'Pin', 'lead', 'config', 1, ?, 'oid-pin')`,
+      nowIso(),
+    );
+    config.leadEmails = ['pin@example.com'];
+    expect(readSession(reqWith({ email: 'pin@example.com', name: 'Pin', role: 'lead', oid: 'oid-pin' }))).toMatchObject({ role: 'lead', oid: 'oid-pin' });
+    expect(readSession(reqWith({ email: 'pin@example.com', name: 'Pin', role: 'lead', oid: 'oid-other' }))).toBeNull();
+    // A legacy cookie with no oid (minted before this change) still works until it expires.
+    expect(readSession(reqWith({ email: 'pin@example.com', name: 'Pin', role: 'lead' }))).toMatchObject({ role: 'lead' });
   });
 });

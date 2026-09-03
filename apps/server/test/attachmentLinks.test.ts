@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
-import { all, closeDb, openDb } from '../src/db/db.js';
+import { all, closeDb, openDb, run } from '../src/db/db.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   buildAttachmentLink,
+  hashAttachmentToken,
   redeemAttachmentToken,
   revokeAttachmentLinks,
 } from '../src/services/attachmentLinks.js';
@@ -46,10 +50,42 @@ describe('revocable attachment links', () => {
     expect(redeemAttachmentToken(t)).toBeNull(); // revoked links stop working immediately
   });
 
+  it('stores only a digest of the token, so a copy of the database is not a copy of every link', () => {
+    const t = tokenOf(buildAttachmentLink('inv-5', { scope: 'approver' }));
+    const ids = all<{ id: string }>('SELECT id FROM attachment_tokens').map((r) => r.id);
+    expect(ids).toEqual([hashAttachmentToken(t)]);
+    expect(ids[0]).not.toBe(t);
+    expect(ids[0]).toMatch(/^[0-9a-f]{64}$/);
+    // Presenting the stored digest as if it were the token gets nothing.
+    expect(redeemAttachmentToken(ids[0])).toBeNull();
+    expect(redeemAttachmentToken(t)).toEqual({ invoiceId: 'inv-5' });
+  });
+
+  it('hashes plaintext tokens from older deployments in place, so links already handed out keep working', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finny-tokens-'));
+    const file = path.join(dir, 'finny.db');
+    closeDb();
+    openDb(file);
+    const legacy = 'legacy-plaintext-token-from-a-teams-card';
+    run(
+      `INSERT INTO attachment_tokens (id, invoice_id, scope, created_at, expires_at) VALUES (?, 'inv-old', 'approver', ?, ?)`,
+      legacy, new Date().toISOString(), new Date(Date.now() + 86_400_000).toISOString(),
+    );
+    closeDb();
+    openDb(file); // migration runs on open
+    expect(all<{ id: string }>('SELECT id FROM attachment_tokens').map((r) => r.id)).toEqual([hashAttachmentToken(legacy)]);
+    expect(redeemAttachmentToken(legacy)).toEqual({ invoiceId: 'inv-old' });
+    closeDb();
+    openDb(file); // idempotent: a digest is not re-hashed
+    expect(redeemAttachmentToken(legacy)).toEqual({ invoiceId: 'inv-old' });
+    closeDb();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('caps the TTL so a Sage link is no longer a decade-long capability', () => {
     config.attachmentLinkMaxTtlDays = 365;
     const t = tokenOf(buildAttachmentLink('inv-9', { scope: 'sage', ttlMs: 10 * 365 * 24 * 60 * 60 * 1000 }));
-    const row = all<{ expires_at: string }>(`SELECT expires_at FROM attachment_tokens WHERE id = ?`, t)[0];
+    const row = all<{ expires_at: string }>(`SELECT expires_at FROM attachment_tokens WHERE id = ?`, hashAttachmentToken(t))[0];
     const days = (new Date(row.expires_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
     expect(days).toBeGreaterThan(364);
     expect(days).toBeLessThanOrEqual(365.001);

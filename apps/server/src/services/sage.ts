@@ -58,6 +58,18 @@ function csvField(value: string): string {
   return value;
 }
 
+/**
+ * The AP team opens the batch file in Excel before importing it, and Details,
+ * Ex Ref and A/C carry text lifted from supplier documents. A cell starting
+ * with = + - @ (or a tab) is a formula to Excel, so those leading characters
+ * are dropped. Dropped rather than apostrophe-quoted, which is the audit CSV's
+ * approach, because Sage's importer would take the apostrophe literally into
+ * the ledger.
+ */
+export function formulaSafe(value: string): string {
+  return value.replace(/^[=+\-@\t\r]+/, '');
+}
+
 export function taxCodeForRate(rate: number | null, settings: Settings): string {
   if (rate === null) return settings.default_tax_code;
   return settings.tax_codes[String(rate)] ?? settings.default_tax_code;
@@ -93,13 +105,13 @@ export function buildSageCsv(lines: SageLineInput[], settings: Settings): string
       ? settings.tax_codes['0'] ?? settings.default_tax_code
       : taxCodeForRate(line.vat_rate, settings);
     const cells = [
-      line.supplier_account_ref,
+      formulaSafe(line.supplier_account_ref),
       toSageDate(line.invoice_date),
       line.posting_ref,
-      line.po_number ?? '',
+      formulaSafe(line.po_number ?? ''),
       nominal,
       dept,
-      buildDetails(line),
+      formulaSafe(buildDetails(line)),
       centsToDecimal(netCents),
       taxCode,
       centsToDecimal(vatCents),

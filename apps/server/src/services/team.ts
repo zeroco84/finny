@@ -33,12 +33,15 @@ interface TeamRow {
   in_group: number | bigint;
   updated_at: string;
   updated_by: string | null;
+  entra_oid: string | null;
 }
 
 interface GroupPerson {
   name: string;
   email: string;
   role: TeamRole;
+  /** Entra object id (graph provider only). */
+  entraId?: string;
 }
 
 // The seeded finance group shown in `mock` mode — a stand-in for the members
@@ -124,11 +127,14 @@ export function resolveRole(email: string): TeamRole {
  * group by a sync. Used by the session check so that removing someone from the
  * team ends their access on their next request, not when their cookie expires.
  */
-export function isCurrentMember(email: string): boolean {
+export function isCurrentMember(email: string, oid?: string): boolean {
   const normalized = normalize(email);
-  if (config.leadEmails.includes(normalized)) return true;
   const row = getMemberRow(normalized);
-  return Boolean(row) && Number(row!.in_group) === 1;
+  // Once a seat is pinned to an Entra account, only that account may use it —
+  // even for a config lead: the pin names an address, not whoever holds it.
+  if (row?.entra_oid && oid && row.entra_oid !== oid) return false;
+  if (config.leadEmails.includes(normalized)) return true;
+  return row !== undefined && Number(row.in_group) === 1;
 }
 
 /**
@@ -144,15 +150,23 @@ export function ensureTeamMemberOnSignIn(user: SessionUser): TeamRole {
   const existing = getMemberRow(email);
 
   if (existing) {
+    // The seat is already pinned to an account (by a group sync or an earlier
+    // sign-in): a different Entra account presenting the same email is not
+    // that person, however the address came to match.
+    if (existing.entra_oid && user.oid && existing.entra_oid !== user.oid) {
+      throw new TeamError('This email belongs to a different account in the team directory', 403);
+    }
     const role: TeamRole = isConfigLead ? 'lead' : asRole(existing.role);
     const nameChanged = Boolean(name) && name !== existing.name;
     const roleChanged = role !== asRole(existing.role);
     const rejoined = Number(existing.in_group) !== 1;
-    if (nameChanged || roleChanged || rejoined) {
+    const pinAccount = Boolean(user.oid) && !existing.entra_oid;
+    if (nameChanged || roleChanged || rejoined || pinAccount) {
       run(
-        'UPDATE team_members SET name = ?, role = ?, in_group = 1 WHERE email = ?',
+        'UPDATE team_members SET name = ?, role = ?, in_group = 1, entra_oid = COALESCE(entra_oid, ?) WHERE email = ?',
         nameChanged ? name : existing.name,
         role,
+        user.oid ?? null,
         email,
       );
     }
@@ -174,13 +188,14 @@ export function ensureTeamMemberOnSignIn(user: SessionUser): TeamRole {
     source = 'group';
   }
   run(
-    `INSERT INTO team_members (email, name, role, source, in_group, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, 1, ?, 'system')`,
+    `INSERT INTO team_members (email, name, role, source, in_group, updated_at, updated_by, entra_oid)
+     VALUES (?, ?, ?, ?, 1, ?, 'system', ?)`,
     email,
     name,
     role,
     source,
     nowIso(),
+    user.oid ?? null,
   );
   return role;
 }
@@ -235,7 +250,7 @@ async function fetchGroupMembers(): Promise<GroupPerson[]> {
   const members = await fetchEntraGroupMembers(config.team.groupId);
   // A person's Finny role comes from the directory, not Graph — new members
   // default to processor (or a config pin).
-  return members.map((m) => ({ name: m.name, email: m.email, role: resolveRole(m.email) }));
+  return members.map((m) => ({ name: m.name, email: m.email, role: resolveRole(m.email), entraId: m.entraId }));
 }
 
 /**
@@ -252,14 +267,17 @@ export async function syncGroup(actorEmail: string): Promise<TeamDirectory> {
   for (const person of people) {
     const email = normalize(person.email);
     run(
-      `INSERT INTO team_members (email, name, role, source, in_group, updated_at, updated_by)
-       VALUES (?, ?, ?, 'group', 1, ?, ?)
-       ON CONFLICT(email) DO UPDATE SET name = excluded.name, in_group = 1`,
+      `INSERT INTO team_members (email, name, role, source, in_group, updated_at, updated_by, entra_oid)
+       VALUES (?, ?, ?, 'group', 1, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         name = excluded.name, in_group = 1,
+         entra_oid = COALESCE(excluded.entra_oid, team_members.entra_oid)`,
       email,
       person.name,
       person.role,
       now,
       actorEmail,
+      person.entraId ?? null,
     );
   }
   return listTeam(actorEmail);
