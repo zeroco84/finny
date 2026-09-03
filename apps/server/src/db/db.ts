@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA } from './schema.js';
 
@@ -47,6 +48,9 @@ function migrate(database: DatabaseSync): void {
     updated_at TEXT NOT NULL,
     updated_by TEXT
   )`);
+  // The Entra object id pins a directory row to one account; filled in by a
+  // group sync or the member's first SSO sign-in, then enforced on both.
+  ensureColumn('team_members', 'entra_oid', 'TEXT');
   // Bounded-retry bookkeeping for mailbox messages that fail to ingest, so one
   // bad email can never hold the Graph watermark (and every invoice behind it).
   database.exec(`CREATE TABLE IF NOT EXISTS mail_message_failures (
@@ -73,6 +77,18 @@ function migrate(database: DatabaseSync): void {
     revoked_at TEXT
   )`);
   database.exec('CREATE INDEX IF NOT EXISTS idx_attachment_tokens_invoice ON attachment_tokens(invoice_id)');
+  // Tokens used to be stored verbatim; now only their SHA-256 hex digest is.
+  // Hash any plaintext survivors in place (a raw token is 43 base64url chars,
+  // a digest is 64 hex chars), so links already sitting in Teams cards and
+  // Sage records keep working through the new hashed lookup.
+  const plaintextTokens = database
+    .prepare(`SELECT id FROM attachment_tokens WHERE length(id) != 64 OR id GLOB '*[^0-9a-f]*'`)
+    .all() as { id: string }[];
+  for (const { id } of plaintextTokens) {
+    database
+      .prepare('UPDATE attachment_tokens SET id = ? WHERE id = ?')
+      .run(crypto.createHash('sha256').update(id).digest('hex'), id);
+  }
   // Alerts moved from email to a Teams webhook: rename the email_* delivery
   // columns to channel-agnostic delivery_* (preserving existing rows).
   const alertCols = database.prepare('PRAGMA table_info(alerts)').all() as { name: string }[];

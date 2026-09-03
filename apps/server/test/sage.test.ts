@@ -86,6 +86,18 @@ describe('buildSageCsv (posting-sheet format)', () => {
     expect(row(csv)[7]).toBe('1000.00');
   });
 
+  it('drops leading formula characters from supplier-derived cells (Excel opens this file first)', () => {
+    const csv = buildSageCsv(
+      [{ ...line, invoice_ref: '=HYPERLINK("http://evil")', po_number: '+cmd|calc', supplier_account_ref: '@ACME1', project_code: null }],
+      DEFAULT_SETTINGS,
+    );
+    const cells = row(csv);
+    expect(cells[0]).toBe('ACME1');
+    expect(cells[3]).toBe('cmd|calc');
+    expect(cells[6]).toMatch(/^"?HYPERLINK/); // the cell is CSV-quoted because it contains quotes
+    expect(csv).not.toMatch(/,[=+\-@]/);
+  });
+
   it('escapes commas and quotes in Details', () => {
     const csv = buildSageCsv(
       [{ ...line, vendor_name: 'Smith, Jones "and" Co' }],

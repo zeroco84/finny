@@ -32,6 +32,13 @@ describe('roleForEmail / userFromClaims', () => {
     });
   });
 
+  it('carries the Entra object id and refuses an unverified email domain (xms_edov=false)', () => {
+    expect(userFromClaims({ email: 'bob@example.com', oid: 'guid-bob' })).toMatchObject({ oid: 'guid-bob' });
+    expect(userFromClaims({ email: 'bob@example.com', oid: 'guid-bob', xms_edov: true })).not.toBeNull();
+    expect(userFromClaims({ email: 'amy@example.com', oid: 'guid-x', xms_edov: false })).toBeNull();
+    expect(userFromClaims({ email: 'amy@example.com', oid: 'guid-x', xms_edov: 'false' })).toBeNull();
+  });
+
   it('rejects tokens with no usable email', () => {
     expect(userFromClaims({ name: 'No Mail', oid: 'guid' })).toBeNull();
     expect(userFromClaims({ preferred_username: 'not-an-email' })).toBeNull();

@@ -221,7 +221,10 @@ CREATE TABLE IF NOT EXISTS team_members (
   source TEXT NOT NULL DEFAULT 'group',
   in_group INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL,
-  updated_by TEXT
+  updated_by TEXT,
+  -- Entra object id: the account this seat belongs to, once known. An email is
+  -- only the lookup key; a different account presenting it is refused.
+  entra_oid TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ingested_messages (

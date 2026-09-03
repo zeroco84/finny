@@ -18,6 +18,17 @@ import { audit } from './audit.js';
 
 export const APPROVAL_LINK_TTL_MS = 14 * 24 * 60 * 60 * 1000; // approver review window
 
+/**
+ * Only a digest of each token is stored. The link in a Teams card or a Sage
+ * record is the bearer secret; a copy of the database (a Render shell, a disk
+ * snapshot, a backup) must not double as a copy of every unexpired link.
+ * Redemption hashes what is presented and looks that up, so the token itself
+ * exists only in the URL Finny handed out.
+ */
+export function hashAttachmentToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 function maxTtlMs(): number {
   return config.attachmentLinkMaxTtlDays * 24 * 60 * 60 * 1000;
 }
@@ -40,7 +51,7 @@ export function buildAttachmentLink(invoiceId: string, opts: AttachmentLinkOptio
   run(
     `INSERT INTO attachment_tokens (id, invoice_id, scope, approver_id, created_by, created_at, expires_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    token,
+    hashAttachmentToken(token),
     invoiceId,
     opts.scope,
     opts.approverId ?? null,
@@ -61,7 +72,10 @@ export function redeemAttachmentToken(
   access: { ip?: string | null; ua?: string | null } = {},
 ): { invoiceId: string } | null {
   if (!token) return null;
-  const row = one<Record<string, unknown>>('SELECT * FROM attachment_tokens WHERE id = ?', token);
+  const row = one<Record<string, unknown>>(
+    'SELECT * FROM attachment_tokens WHERE id = ?',
+    hashAttachmentToken(token),
+  );
   if (!row) return null;
   if (row.revoked_at) return null;
   if (new Date(String(row.expires_at)).getTime() < Date.now()) return null;

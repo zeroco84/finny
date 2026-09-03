@@ -503,6 +503,10 @@ export interface SessionUser {
   email: string;
   name: string;
   role: 'processor' | 'lead';
+  /** Entra object id of the signed-in account (SSO only). The durable
+   *  identity: an email can be reassigned or spoofed by a guest account, an
+   *  object id cannot. */
+  oid?: string;
 }
 
 /** Privilege level. Mirrors SessionUser['role'] — the two roles the app knows. */

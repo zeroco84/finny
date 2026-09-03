@@ -76,12 +76,13 @@ export function readSession(req: Request): SessionUser | null {
       // M365 group by a sync) is signed out on their next request rather than
       // keeping a processor's read access until the cookie ages out. Dev
       // sign-in is exempt — it creates its own rows and anyone can re-login.
-      if (config.authProvider === 'entra' && !isCurrentMember(parsed.email)) return null;
+      if (config.authProvider === 'entra' && !isCurrentMember(parsed.email, parsed.oid)) return null;
       role = resolveRole(parsed.email);
     } catch {
       /* DB not ready — trust the signed cookie */
     }
-    return { email: parsed.email, name: parsed.name ?? parsed.email, role };
+    const oid = typeof parsed.oid === 'string' && parsed.oid ? parsed.oid : undefined;
+    return { email: parsed.email, name: parsed.name ?? parsed.email, role, ...(oid ? { oid } : {}) };
   } catch {
     return null;
   }
