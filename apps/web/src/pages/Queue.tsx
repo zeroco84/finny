@@ -76,7 +76,7 @@ export default function Queue() {
   }
 
   return (
-    <div className="page">
+    <div className="page page-queue">
       <div className="page-head">
         <h1>Invoice queue</h1>
         <div className="page-actions">
@@ -140,6 +140,7 @@ export default function Queue() {
           }
         />
       ) : (
+        <div className="table-scroll">
         <table className="table table-click">
           <thead>
             <tr>
@@ -219,6 +220,7 @@ export default function Queue() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

@@ -200,6 +200,14 @@ small { font-size: 0.85em; }
 main { flex: 1; }
 .page { max-width: 1080px; margin: 0 auto; padding: 26px 26px 70px; }
 .page-wide { max-width: 1400px; }
+/* The queue is a wide table: give it the room to keep every row on one line
+ * when the screen has it, and let it scroll sideways (rather than wrap cells
+ * into clutter) when it does not. Vendor stays a two-line cell on purpose
+ * (name, then entity · project) and may wrap when a trading name is long. */
+.page-queue { max-width: 1520px; }
+.table-scroll { overflow-x: auto; }
+.page-queue .table td { white-space: nowrap; }
+.page-queue .table td:nth-child(2) { white-space: normal; min-width: 240px; }
 .page-loading { padding: 80px; text-align: center; color: var(--ink-soft); }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
 .page-actions { display: flex; gap: 10px; align-items: center; }
