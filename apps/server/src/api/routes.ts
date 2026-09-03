@@ -1,4 +1,5 @@
 import express, { Router, type Request } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import type { ConnectorStatus, Overview, ReviewSubmission, WebhookSubscriptionInput } from '@finny/shared';
 import { config } from '../config.js';
@@ -94,9 +95,34 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
+/**
+ * Per-IP request ceilings for the routes that sit outside the session gate.
+ * Generous for any legitimate caller (a human signing in, an approver opening
+ * one document, a flow posting one decision, BlockDocs polling on a schedule)
+ * and tight enough that guessing a token or hammering sign-in is slow. Keyed on
+ * req.ip, which is the real client only when "trust proxy" is set — see config.
+ */
+export const RATE_LIMITS = {
+  auth: { windowMs: 60_000, limit: 30 },
+  public: { windowMs: 60_000, limit: 60 },
+  integrations: { windowMs: 60_000, limit: 120 },
+} as const;
+
+function limiter(spec: { windowMs: number; limit: number }) {
+  return rateLimit({
+    ...spec,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests — try again in a minute' },
+  });
+}
+
 export function buildRouter(): Router {
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
+  router.use('/auth', limiter(RATE_LIMITS.auth));
+  router.use('/public', limiter(RATE_LIMITS.public));
+  router.use('/integrations', limiter(RATE_LIMITS.integrations));
 
   // API responses are per-user and authenticated — never cacheable. Without
   // this, a caching layer in front (e.g. a Cloudflare "Cache Everything" rule
@@ -321,8 +347,18 @@ export function buildRouter(): Router {
       res.status(404).json({ error: 'Attachment not found' });
       return;
     }
-    res.setHeader('Content-Type', String(row.attachment_mime ?? 'application/octet-stream'));
-    res.setHeader('Content-Disposition', `inline; filename="${String(row.attachment_name ?? 'attachment')}"`);
+    // Same defence as the public link: the MIME comes from the ingest
+    // allow-list, but never let a stored attachment run as active content on
+    // the app origin, and only render the known-safe types inline. No CSP
+    // `sandbox` here — the invoice page iframes this response, and Chrome will
+    // not show a PDF inside a sandboxed frame.
+    const mime = String(row.attachment_mime ?? 'application/octet-stream');
+    const inlineOk = mime === 'application/pdf' || mime.startsWith('image/');
+    const filename = String(row.attachment_name ?? 'attachment').replace(/["\r\n]/g, '_');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'");
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${filename}"`);
     res.sendFile(String(row.attachment_path));
   });
 
@@ -471,8 +507,22 @@ export function buildRouter(): Router {
     );
   });
 
+  const rulePatchSchema = z
+    .object({
+      vendor_pattern: z.string().min(2).max(200),
+      category: z.string().max(100).nullable(),
+      approver_id: z.string().max(60).nullable(),
+      hint_text: z.string().max(500).nullable(),
+    })
+    .partial()
+    .strict();
   router.patch('/rules/:id', requireLead, (req, res) => {
-    const rule = updateRule(paramId(req), req.body ?? {}, req.user!.email);
+    const parsed = rulePatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid rule payload' });
+      return;
+    }
+    const rule = updateRule(paramId(req), parsed.data, req.user!.email);
     if (!rule) {
       res.status(404).json({ error: 'Rule not found' });
       return;
@@ -747,22 +797,64 @@ export function buildRouter(): Router {
   router.get('/settings', (_req, res) => {
     res.json(getSettings());
   });
+  // Every settings key has a shape the rest of the app relies on: getSettings()
+  // maps over `projects` on every request, the export path does arithmetic on
+  // `next_posting_ref`, the review gate compares `mode`. A malformed value
+  // stored here used to take every endpoint down until the row was fixed by
+  // hand, so the shape is enforced at the door. Unknown keys are dropped by
+  // updateSettings, so they are simply ignored here too.
+  const code = (max: number) => z.string().trim().min(1).max(max);
+  const settingsPatchSchema = z
+    .object({
+      mode: z.enum(['shadow', 'live']),
+      extraction_model: z.string().trim().max(120),
+      confidence_threshold: z.number().min(0).max(1),
+      review_sla_hours: z.number().min(0).max(24 * 365),
+      approval_sla_hours: z.number().min(0).max(24 * 365),
+      alert_webhook_url: z.string().trim().max(2000),
+      entities: z.array(code(200)).max(100),
+      projects: z
+        .array(
+          z.object({
+            name: code(200),
+            code: code(30),
+            dept: z.string().trim().max(10),
+            entity: z.string().trim().max(200),
+          }),
+        )
+        .max(500),
+      categories: z.array(z.object({ name: code(100), nominal_code: code(20) })).max(500),
+      tax_codes: z.record(z.string().max(10), z.string().trim().max(10)),
+      default_tax_code: code(10),
+      sage_department: z.string().trim().max(10),
+      next_posting_ref: z.number().int().min(1).max(99_999_999),
+      rule_apply: z.object({ category: z.enum(['auto', 'review']), approver: z.enum(['auto', 'review']) }),
+    })
+    .partial();
   router.patch('/settings', requireLead, (req, res) => {
+    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      res.status(400).json({
+        error: `Invalid settings value${issue ? ` at ${issue.path.join('.') || 'root'}: ${issue.message}` : ''}`,
+      });
+      return;
+    }
+    const patch = parsed.data;
     // Validate the webhook on write so an SSRF/off-tenant URL is rejected at the
     // door (postToTeams also re-checks before every send).
-    const webhook = (req.body ?? {}).alert_webhook_url;
-    if (typeof webhook === 'string' && webhook.trim() && !isValidWebhookUrl(webhook)) {
+    if (patch.alert_webhook_url && !isValidWebhookUrl(patch.alert_webhook_url)) {
       res.status(400).json({
         error: 'The webhook URL must be https on an allowed Microsoft Teams / Power Automate host.',
       });
       return;
     }
     const before = getSettings();
-    const updated = updateSettings(req.body ?? {});
+    const updated = updateSettings(patch);
     if (before.mode !== updated.mode) {
       audit(null, 'mode_changed', req.user!.email, { from: before.mode, to: updated.mode });
     } else {
-      audit(null, 'settings_changed', req.user!.email, { keys: Object.keys(req.body ?? {}) });
+      audit(null, 'settings_changed', req.user!.email, { keys: Object.keys(patch) });
     }
     res.json(updated);
   });
@@ -830,18 +922,25 @@ export function buildRouter(): Router {
     audit(null, 'approver_added', req.user!.email, { approver: parsed.data.name });
     res.json(getApprover(id));
   });
+  const approverPatchSchema = approverSchema.extend({ active: z.boolean() }).partial();
   router.patch('/approvers/:id', requireLead, (req, res) => {
+    const parsed = approverPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid approver payload' });
+      return;
+    }
     const existing = getApprover(paramId(req));
     if (!existing) {
       res.status(404).json({ error: 'Approver not found' });
       return;
     }
+    const patch = parsed.data;
     run(
       'UPDATE approvers SET name = ?, email = ?, teams_user_id = ?, active = ? WHERE id = ?',
-      req.body?.name ?? existing.name,
-      req.body?.email ?? existing.email,
-      req.body?.teams_user_id !== undefined ? req.body.teams_user_id : existing.teams_user_id,
-      req.body?.active !== undefined ? (req.body.active ? 1 : 0) : existing.active ? 1 : 0,
+      patch.name ?? existing.name,
+      patch.email ?? existing.email,
+      patch.teams_user_id !== undefined ? patch.teams_user_id : existing.teams_user_id,
+      patch.active !== undefined ? (patch.active ? 1 : 0) : existing.active ? 1 : 0,
       paramId(req),
     );
     audit(null, 'approver_updated', req.user!.email, { approver_id: paramId(req) });

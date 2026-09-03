@@ -26,6 +26,10 @@ const extractionProvider =
   env('EXTRACTION_PROVIDER') || (anthropicKey ? 'anthropic' : 'mock');
 
 const authProvider = env('AUTH_PROVIDER', 'dev') as 'dev' | 'entra';
+// Dev sign-in lets anyone pick the AP Lead role, so it may only serve a local
+// origin. A public deployment that wants it (the SEED_DEMO sandbox) has to say
+// so explicitly — see hardeningProblems() below.
+const allowDevAuth = env('ALLOW_DEV_AUTH') === 'true';
 // The /api/simulate/* routes fabricate invoices and approval decisions for
 // local demos. They must never be reachable in production (a signed-in user
 // could forge a manager's approval). Off unless explicitly enabled; defaults
@@ -160,8 +164,15 @@ export const config = {
   },
 
   authProvider,
+  allowDevAuth,
   cookieSecure,
   sessionMaxHours,
+  // Express "trust proxy" setting. Behind Render's load balancer req.ip is the
+  // internal hop unless the X-Forwarded-For chain is trusted, which makes the
+  // attachment-link audit IPs useless and the rate limiter throttle everyone
+  // together. Defaults to one hop on Render (it sets RENDER=true), none
+  // elsewhere. Set TRUST_PROXY=2 when a CDN (Cloudflare) fronts the domain.
+  trustProxy: parseTrustProxy(env('TRUST_PROXY', process.env.RENDER ? '1' : 'false')),
   // Entra ID SSO (AUTH_PROVIDER=entra). The ENTRA_* vars fall back to the
   // GRAPH_* app registration — one registration can serve both mail polling
   // (application permission) and user sign-in (web redirect URI).
@@ -204,6 +215,55 @@ export const config = {
   },
   sessionSecret: '',
 };
+
+function parseTrustProxy(raw: string): boolean | number | string {
+  const v = raw.trim().toLowerCase();
+  if (v === '' || v === 'false' || v === '0') return false;
+  if (v === 'true') return true;
+  return /^\d+$/.test(v) ? Number(v) : raw.trim();
+}
+
+/** Only these origins may run dev sign-in without an explicit opt-in. */
+export function isLocalAppUrl(appUrl: string): boolean {
+  try {
+    const host = new URL(appUrl).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+/** Shortest static secret Finny will accept for a machine-to-machine token. */
+export const MIN_STATIC_TOKEN_LENGTH = 32;
+
+/**
+ * Deployment problems the server must refuse to boot with. Each one turns a
+ * misconfiguration into an outage that is loud and immediate, instead of an
+ * app that quietly runs open. Pure over `cfg` so tests can exercise it.
+ */
+export function hardeningProblems(cfg: typeof config): string[] {
+  const problems: string[] = [];
+  if (cfg.authProvider === 'dev' && !cfg.allowDevAuth && !isLocalAppUrl(cfg.appUrl)) {
+    problems.push(
+      `AUTH_PROVIDER=dev with a non-local APP_URL (${cfg.appUrl}): dev sign-in lets anyone ` +
+        'choose the AP Lead role. Set AUTH_PROVIDER=entra, or ALLOW_DEV_AUTH=true for a throwaway demo.',
+    );
+  }
+  const tokens: [string, string][] = [
+    ['APPROVALS_CALLBACK_TOKEN', cfg.approvalsCallbackToken],
+    ['APPROVALS_FLOW_SECRET', cfg.approvalsFlowSecret],
+    ['FINNY_BLOCKDOCS_TOKEN', cfg.blockdocsToken],
+  ];
+  for (const [name, value] of tokens) {
+    if (value && value.length < MIN_STATIC_TOKEN_LENGTH) {
+      problems.push(
+        `${name} is ${value.length} characters; it must be at least ${MIN_STATIC_TOKEN_LENGTH} ` +
+          '(it is the only thing authenticating a machine caller).',
+      );
+    }
+  }
+  return problems;
+}
 
 export function ensureDataDirs(): void {
   for (const dir of [config.dataDir, config.attachmentsDir, config.inboxDir, config.exportsDir]) {

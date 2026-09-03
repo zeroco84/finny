@@ -119,6 +119,19 @@ export function resolveRole(email: string): TeamRole {
 }
 
 /**
+ * Whether an email still has a seat in the directory: a config pin always
+ * does; otherwise the row must exist and not be flagged as having left the
+ * group by a sync. Used by the session check so that removing someone from the
+ * team ends their access on their next request, not when their cookie expires.
+ */
+export function isCurrentMember(email: string): boolean {
+  const normalized = normalize(email);
+  if (config.leadEmails.includes(normalized)) return true;
+  const row = getMemberRow(normalized);
+  return Boolean(row) && Number(row!.in_group) === 1;
+}
+
+/**
  * Record a successful sign-in: create the member the first time we see them
  * (applying the config pin, the first-user bootstrap, or the sign-in-time role
  * hint), refresh their display name, and return their effective role. Never

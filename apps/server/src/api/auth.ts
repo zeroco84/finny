@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { SessionUser } from '@finny/shared';
 import { config } from '../config.js';
-import { resolveRole } from '../services/team.js';
+import { isCurrentMember, resolveRole } from '../services/team.js';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -71,6 +71,12 @@ export function readSession(req: Request): SessionUser | null {
     // re-login. Fall back to the signed role if the directory is unreachable.
     let role: SessionUser['role'] = parsed.role;
     try {
+      // Under SSO the directory also decides whether the person still has a
+      // seat at all: someone removed from the team (or flagged out of the
+      // M365 group by a sync) is signed out on their next request rather than
+      // keeping a processor's read access until the cookie ages out. Dev
+      // sign-in is exempt — it creates its own rows and anyone can re-login.
+      if (config.authProvider === 'entra' && !isCurrentMember(parsed.email)) return null;
       role = resolveRole(parsed.email);
     } catch {
       /* DB not ready — trust the signed cookie */
