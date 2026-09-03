@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { config, ensureDataDirs } from './config.js';
+import { config, ensureDataDirs, hardeningProblems } from './config.js';
 import { openDb } from './db/db.js';
 import { seedDefaults } from './services/settings.js';
 import { purgeSampleDirectory, seedTeam } from './services/team.js';
@@ -12,9 +12,45 @@ import { startWorkers } from './workers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Response headers every route gets. The SPA has no inline scripts (Vite emits
+ * hashed module files) but does use inline style attributes; fonts and the
+ * logo ship from the same origin; the invoice page iframes its own attachment
+ * route, so frames from 'self' must stay allowed while any other site framing
+ * Finny (clickjacking a Confirm button) is refused.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "frame-src 'self'",
+  "frame-ancestors 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
+export function securityHeaders(_req: express.Request, res: express.Response, next: express.NextFunction): void {
+  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS only where the cookie is already Secure — i.e. the deployment is
+  // https — so a local http dev server never pins its browser to https.
+  // No includeSubDomains: Finny does not own the rest of the customer's domain.
+  if (config.cookieSecure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+}
+
 export function createApp(): express.Express {
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', config.trustProxy);
+  app.use(securityHeaders);
   app.use('/api', buildRouter());
 
   // Serve the built web app when present (single-process deploy: build
@@ -49,6 +85,14 @@ export function boot(): void {
     if (problem) {
       throw new Error(`AUTH_PROVIDER=entra but ${problem} — see README "Wiring up Entra ID sign-in"`);
     }
+  }
+  // Likewise refuse dev sign-in on a public URL and weak machine tokens: each
+  // is a deployment that would run open, and an outage at boot is the honest
+  // outcome (Render keeps the previous deploy serving when the new one fails
+  // its health check).
+  const problems = hardeningProblems(config);
+  if (problems.length > 0) {
+    throw new Error(`Refusing to start:\n  - ${problems.join('\n  - ')}`);
   }
   openDb(config.dbPath);
   seedDefaults();

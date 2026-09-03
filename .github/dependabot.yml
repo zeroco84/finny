@@ -1,0 +1,22 @@
+# Weekly dependency PRs, grouped so a routine bump is one review, not twenty.
+# Note: `xlsx` is installed from the SheetJS CDN tarball, which neither
+# Dependabot nor `npm audit` can see — check it by hand against
+# https://docs.sheetjs.com/docs/miscellany/changelog on each security review.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

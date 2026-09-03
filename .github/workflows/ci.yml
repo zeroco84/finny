@@ -37,6 +37,12 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Production dependencies only: a high or critical advisory in something
+      # the server actually ships with fails the build. Dev-only advisories
+      # (vite, vitest, concurrently) surface through Dependabot instead.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Typecheck
         run: npm run typecheck
 

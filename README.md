@@ -267,9 +267,11 @@ accepted. The callback is idempotent: a retried or late callback for an already-
 returns `200 {"applied": false}` and changes nothing, so a decision can never be flipped. Without
 `APPROVALS_CALLBACK_TOKEN` the endpoint fails **shut** (`503`), never open.
 
-Approving managers are not Finny users, so each approval carries a **signed, expiring link**
-(14 days, HMAC-bound to the invoice — `services/attachmentLinks.ts`) that shows them the invoice
-document with no account; rotating `SESSION_SECRET` invalidates outstanding links.
+Approving managers are not Finny users, so each approval carries a **random, expiring link**
+(14 days, bound to the invoice and recorded in `attachment_tokens` — `services/attachmentLinks.ts`)
+that shows them the invoice document with no account. Every open is logged with the caller's IP, and
+an AP Lead can revoke all of an invoice's links from the invoice page; rotating `SESSION_SECRET`
+does **not** affect them.
 
 Because decisions arrive by callback there is no approvals poller in this mode. If a flow run is
 deleted or its HTTP step fails, the request stays `pending` — worth a watchdog before org-wide
